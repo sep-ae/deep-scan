@@ -1,0 +1,91 @@
+# ============================
+# PYTHON
+# ============================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+.eggs/
+.env
+.venv/
+venv/
+env/
+
+# Virtual environment folders
+ENV/
+env.bak/
+pip-wheel-metadata/
+
+# Byte-compiled / optimized / DLL files
+*.so
+
+# Logs
+*.log
+logs/
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+pytestdebug.log
+
+# ============================
+# FLASK / FASTAPI / DJANGO
+# ============================
+instance/
+*.sqlite3
+*.db
+
+# ============================
+# EDITOR / IDE
+# ============================
+# VSCode
+.vscode/
+.code-workspace
+
+# PyCharm
+.idea/
+
+# ============================
+# OS FILES
+# ============================
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ============================
+# FRONTEND (React/Vue/Svelte/etc)
+# ============================
+node_modules/
+dist/
+build/
+*.local
+
+# ============================
+# ENV FILES & SECRETS
+# ============================
+.env
+*.env
+.env.*
+secret.key
+credentials.json
+
+# ============================
+# BACKUP / TEMP
+# ============================
+*.swp
+*.tmp
+*.bak
+temp/
+tmp/
