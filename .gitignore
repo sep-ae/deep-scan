@@ -1,6 +1,6 @@
-# ============================
+# ======================================
 # PYTHON
-# ============================
+# ======================================
 __pycache__/
 *.py[cod]
 *.pyo
@@ -8,43 +8,46 @@ __pycache__/
 *.pdb
 *.egg-info/
 .eggs/
+
+# Virtual environment
 .env
 .venv/
 venv/
-env/
-
-# Virtual environment folders
 ENV/
+env/
 env.bak/
 pip-wheel-metadata/
 
-# Byte-compiled / optimized / DLL files
+# Shared Python cache
 *.so
-
-# Logs
 *.log
 logs/
 
-# Unit test / coverage
+# Test / coverage
 htmlcov/
 .tox/
 .nox/
 .coverage
 .coverage.*
-.cache
+.cache/
 .pytest_cache/
 pytestdebug.log
 
-# ============================
-# FLASK / FASTAPI / DJANGO
-# ============================
+# SQLite / local DB
 instance/
 *.sqlite3
 *.db
 
-# ============================
+# ======================================
+# BACKEND FRAMEWORK (Flask / FastAPI / Django)
+# ======================================
+instance/
+*.sqlite3
+*.db
+
+# ======================================
 # EDITOR / IDE
-# ============================
+# ======================================
 # VSCode
 .vscode/
 .code-workspace
@@ -52,9 +55,9 @@ instance/
 # PyCharm
 .idea/
 
-# ============================
+# ======================================
 # OS FILES
-# ============================
+# ======================================
 # Windows
 Thumbs.db
 Desktop.ini
@@ -64,26 +67,37 @@ Desktop.ini
 .AppleDouble
 .LSOverride
 
-# ============================
-# FRONTEND (React/Vue/Svelte/etc)
-# ============================
+# ======================================
+# FRONTEND (Vue/React/Svelte/etc)
+# ======================================
 node_modules/
 dist/
 build/
 *.local
 
-# ============================
+# Vite
+*.vite*
+vite.config.timestamp*
+
+# Optional: lock file jika tidak ingin di-track
+# package-lock.json
+# pnpm-lock.yaml
+# yarn.lock
+
+# ======================================
 # ENV FILES & SECRETS
-# ============================
+# ======================================
 .env
 *.env
 .env.*
 secret.key
 credentials.json
+*.pem
+*.key
 
-# ============================
-# BACKUP / TEMP
-# ============================
+# ======================================
+# TEMP & BACKUP
+# ======================================
 *.swp
 *.tmp
 *.bak
