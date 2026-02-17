@@ -9,14 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label'
 
 const router = useRouter()
-const username = ref('')
+const identifier = ref('') 
 const password = ref('')
 const isLoading = ref(false)
 
 const handleLogin = async () => {
-  if (!username.value || !password.value) {
+  if (!identifier.value || !password.value) {
     toast('Validasi Gagal', {
-      description: 'Username dan Password wajib diisi.'
+      description: 'Username/Email dan Password wajib diisi.'
     })
     return
   }
@@ -25,7 +25,7 @@ const handleLogin = async () => {
     isLoading.value = true
 
     const response = await api.post('/auth/login', {
-      username: username.value,
+      identifier: identifier.value,
       password: password.value
     })
 
@@ -37,6 +37,10 @@ const handleLogin = async () => {
     }
 
     localStorage.setItem('token', response.data.access_token)
+    
+    if (response.data.user) {
+      localStorage.setItem('user', JSON.stringify(response.data.user))
+    }
 
     toast('Login Berhasil', {
       description: 'Anda akan diarahkan ke dashboard.'
@@ -47,7 +51,7 @@ const handleLogin = async () => {
   } catch (error) {
     const msg =
       error.response?.data?.msg ||
-      'Login Gagal. Periksa kembali username dan password.'
+      'Login Gagal. Periksa kembali username/email dan password.'
 
     toast('Login Gagal', { description: msg })
   } finally {
@@ -73,12 +77,12 @@ const handleLogin = async () => {
       <CardContent>
         <form @submit.prevent="handleLogin" class="space-y-4">
           <div class="space-y-2">
-            <Label for="username">Username</Label>
+            <Label for="identifier">Username atau Email</Label>
             <Input
-              id="username"
+              id="identifier"
               type="text"
-              placeholder="admin"
-              v-model="username"
+              placeholder="admin atau admin@email.com"
+              v-model="identifier"
               :disabled="isLoading"
               required
               class="focus-visible:ring-blue-600"
@@ -117,6 +121,6 @@ const handleLogin = async () => {
       </CardContent>
     </Card>
 
-    <p class="text-neutral-400 text-xs mt-6">© 2025 Deep-Scan, Tugas Akhir</p>
+    <p class="text-neutral-400 text-xs mt-6">© 2026 Deep-Scan, Tugas Akhir</p>
   </div>
 </template>

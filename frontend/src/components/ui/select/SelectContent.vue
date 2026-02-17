@@ -36,6 +36,7 @@ const props = defineProps({
   reference: { type: null, required: false },
   asChild: { type: Boolean, required: false },
   as: { type: null, required: false },
+  disableOutsidePointerEvents: { type: Boolean, required: false },
   class: { type: null, required: false },
 });
 const emits = defineEmits([

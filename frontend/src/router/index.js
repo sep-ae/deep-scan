@@ -4,6 +4,9 @@ import LandingView from '@/views/LandingView.vue'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
 import DashboardView from '@/views/DashboardView.vue'
+import ScanView from '@/views/ScanView.vue'
+import HistoryView from '@/views/HistoryView.vue'
+import ScanDetailView from '@/views/ScanDetailView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -29,6 +32,24 @@ const router = createRouter({
       component: DashboardView,
       meta: { requiresAuth: true }
     },
+    {
+      path: '/scan',
+      name: 'scan',
+      component: ScanView,
+      meta: { requiresAuth: true }
+    },
+            {
+      path: '/history',
+      name: 'history',
+      component: HistoryView,
+      meta: { requiresAuth: true }
+    },
+        {
+      path: '/history/:id',
+      name: 'scan-detail',
+      component: ScanDetailView,
+      meta: { requiresAuth: true }
+    }
   ]
 })
 

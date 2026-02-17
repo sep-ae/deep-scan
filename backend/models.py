@@ -1,66 +1,87 @@
-# backend/models.py
 from extensions import db
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# 1. TABEL USER (Untuk Login)
+
 class User(db.Model):
     __tablename__ = 'users'
     
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
+    user_id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(45), nullable=False)
+    email = db.Column(db.String(45), unique=True, nullable=False)
+    password = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
-    scans = db.relationship('ScanHistory', backref='owner', lazy=True)
+
+    scans = db.relationship('Scan', backref='user', lazy=True)
 
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+        self.password = generate_password_hash(password)
 
     def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        return check_password_hash(self.password, password)
 
-# 2. TABEL SCAN HISTORY (Riwayat Scan)
-class ScanHistory(db.Model):
-    __tablename__ = 'scan_history'
 
-    id = db.Column(db.Integer, primary_key=True)
-    target_url = db.Column(db.String(200), nullable=False)
+class Scan(db.Model):
+    __tablename__ = 'scans'
+
+    scan_id = db.Column(db.Integer, primary_key=True)
+    target_url = db.Column(db.String(255), nullable=False)
+    start_time = db.Column(db.DateTime, default=datetime.now)
+    end_time = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(15), default='Pending')
     
-    # Status: 'Pending', 'Running', 'Completed', 'Failed'
-    status = db.Column(db.String(20), default='Pending') 
-    scan_date = db.Column(db.DateTime, default=datetime.now)
-    finished_at = db.Column(db.DateTime, nullable=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    vulns = db.relationship('Vulnerability', backref='scan', lazy=True, cascade="all, delete-orphan")
+    users_user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "target": self.target_url,
-            "status": self.status,
-            "date": self.scan_date.strftime("%Y-%m-%d %H:%M"),
-            "vuln_count": len(self.vulns)
-        }
+    result = db.relationship('ScanResult', backref='scan', uselist=False, cascade="all, delete-orphan")
 
-# 3. TABEL VULNERABILITY (Detail Temuan)
+
+class ScanResult(db.Model):
+    __tablename__ = 'scan_results'
+
+    result_id = db.Column(db.Integer, primary_key=True)
+    summary = db.Column(db.Text, nullable=True)
+    total_vulnerabilities = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+    scans_scan_id = db.Column(db.Integer, db.ForeignKey('scans.scan_id'), unique=True, nullable=False)
+
+    vulnerabilities = db.relationship('Vulnerability', backref='result', lazy=True, cascade="all, delete-orphan")
+    
+    recon_data = db.relationship('ReconData', backref='result', lazy=True, cascade="all, delete-orphan")
+
+
 class Vulnerability(db.Model):
     __tablename__ = 'vulnerabilities'
 
-    id = db.Column(db.Integer, primary_key=True)
-    
-    # Jenis Celah: 'SQL Injection', 'XSS', 'Open Port'
-    vuln_type = db.Column(db.String(100), nullable=False)
-    
-    # Tingkat Bahaya: 'Critical', 'High', 'Medium', 'Low', 'Info'
-    severity = db.Column(db.String(20), default='Low')
-    proof = db.Column(db.Text, nullable=True)
+    vuln_id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(45), nullable=False)
+    vuln_name = db.Column(db.String(45), nullable=False)
+    severity = db.Column(db.String(10), default='Low')
     description = db.Column(db.Text, nullable=True)
-    scan_id = db.Column(db.Integer, db.ForeignKey('scan_history.id'), nullable=False)
+    recommendation = db.Column(db.Text, nullable=True)
 
-    def to_dict(self):
-        return {
-            "type": self.vuln_type,
-            "severity": self.severity,
-            "proof": self.proof,
-            "desc": self.description
-        }
+    scan_results_result_id = db.Column(db.Integer, db.ForeignKey('scan_results.result_id'), nullable=False)
+
+    poc = db.relationship('PoC', backref='vulnerability', uselist=False, cascade="all, delete-orphan")
+
+
+class PoC(db.Model):
+    __tablename__ = 'pocs'
+
+    poc_id = db.Column(db.Integer, primary_key=True)
+    payload = db.Column(db.Text, nullable=True)
+    response = db.Column(db.Text, nullable=True)
+    http_method = db.Column(db.String(10), default='GET')
+
+    vulnerabilities_vuln_id = db.Column(db.Integer, db.ForeignKey('vulnerabilities.vuln_id'), unique=True, nullable=False)
+
+
+class ReconData(db.Model):
+    __tablename__ = 'recon_data'
+
+    recon_id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(45), nullable=False)
+    item = db.Column(db.String(255), nullable=False)
+    details = db.Column(db.Text, nullable=True)
+
+    scan_results_result_id = db.Column(db.Integer, db.ForeignKey('scan_results.result_id'), nullable=False)

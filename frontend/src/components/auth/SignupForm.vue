@@ -10,12 +10,13 @@ import { Label } from '@/components/ui/label'
 
 const router = useRouter()
 const username = ref('')
+const email = ref('') 
 const password = ref('')
 const confirmPassword = ref('')
 const isLoading = ref(false)
 
 const handleRegister = async () => {
-  if (!username.value || !password.value || !confirmPassword.value) {
+  if (!username.value || !email.value || !password.value || !confirmPassword.value) {
     toast('Validasi Gagal', {
       description: 'Semua kolom wajib diisi.'
     })
@@ -34,6 +35,7 @@ const handleRegister = async () => {
 
     await api.post('/auth/register', {
       username: username.value,
+      email: email.value,
       password: password.value
     })
 
@@ -76,6 +78,19 @@ const handleRegister = async () => {
               type="text"
               placeholder="username_anda"
               v-model="username"
+              :disabled="isLoading"
+              required
+              class="focus-visible:ring-blue-600"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <Label for="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="nama@email.com"
+              v-model="email"
               :disabled="isLoading"
               required
               class="focus-visible:ring-blue-600"
@@ -128,6 +143,6 @@ const handleRegister = async () => {
       </CardContent>
     </Card>
 
-    <p class="text-neutral-400 text-xs mt-6">© 2025 Deep-Scan, Tugas Akhir</p>
+    <p class="text-neutral-400 text-xs mt-6">© 2026 Deep-Scan, Tugas Akhir</p>
   </div>
 </template>
