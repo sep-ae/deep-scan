@@ -1,3 +1,4 @@
+# models.py
 from extensions import db
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -30,6 +31,11 @@ class Scan(db.Model):
     end_time = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(15), default='Pending')
     
+    # ✅ TAMBAHAN UNTUK PROGRESS TRACKING
+    progress = db.Column(db.Integer, default=0)
+    current_phase = db.Column(db.String(100), nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    
     users_user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
 
     result = db.relationship('ScanResult', backref='scan', uselist=False, cascade="all, delete-orphan")
@@ -46,7 +52,6 @@ class ScanResult(db.Model):
     scans_scan_id = db.Column(db.Integer, db.ForeignKey('scans.scan_id'), unique=True, nullable=False)
 
     vulnerabilities = db.relationship('Vulnerability', backref='result', lazy=True, cascade="all, delete-orphan")
-    
     recon_data = db.relationship('ReconData', backref='result', lazy=True, cascade="all, delete-orphan")
 
 

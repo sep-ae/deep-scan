@@ -5,6 +5,7 @@ from sqlalchemy import desc
 
 dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/api/dashboard')
 
+
 @dashboard_bp.route('/stats', methods=['GET'])
 @jwt_required()
 def get_dashboard_stats():
@@ -15,11 +16,29 @@ def get_dashboard_stats():
       - Dashboard
     security:
       - Bearer: []
-    summary: Data total scan, rentan, dan aman
+    summary: Mengambil jumlah total scan, scan rentan, dan scan aman milik user
+    description: Endpoint ini digunakan untuk menampilkan statistik scan berdasarkan user yang sedang login.
     responses:
       200:
-        description: Statistik User
+        description: Statistik berhasil diambil
+        schema:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 10
+            vulnerable:
+              type: integer
+              example: 4
+            secure:
+              type: integer
+              example: 6
+      401:
+        description: Token tidak valid atau tidak ditemukan
+      500:
+        description: Internal Server Error
     """
+
     user_id = get_jwt_identity()
     user_scans = Scan.query.filter_by(users_user_id=user_id).all()
 
@@ -28,7 +47,7 @@ def get_dashboard_stats():
     secure_count = 0
 
     for scan in user_scans:
-        if scan.result: 
+        if scan.result:
             if scan.result.total_vulnerabilities > 0:
                 vulnerable_count += 1
             else:
@@ -40,6 +59,7 @@ def get_dashboard_stats():
         "secure": secure_count
     }), 200
 
+
 @dashboard_bp.route('/history', methods=['GET'])
 @jwt_required()
 def get_scan_history():
@@ -50,11 +70,37 @@ def get_scan_history():
       - Dashboard
     security:
       - Bearer: []
-    summary: 5 Riwayat scan terakhir
+    summary: Mengambil 5 riwayat scan terakhir milik user
+    description: Endpoint ini menampilkan daftar 5 scan terbaru berdasarkan waktu mulai scan.
     responses:
       200:
-        description: List history
+        description: Riwayat scan berhasil diambil
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              scan_id:
+                type: integer
+                example: 101
+              target:
+                type: string
+                example: "https://example.com"
+              status:
+                type: string
+                example: "completed"
+              date:
+                type: string
+                example: "22 Feb 2026, 14:30"
+              vuln_count:
+                type: integer
+                example: 3
+      401:
+        description: Token tidak valid atau tidak ditemukan
+      500:
+        description: Internal Server Error
     """
+
     user_id = get_jwt_identity()
 
     recent_scans = Scan.query.filter_by(users_user_id=user_id)\

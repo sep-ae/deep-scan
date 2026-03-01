@@ -1,13 +1,17 @@
 from flask import Blueprint, jsonify, request
-from extensions import db
+from extensions import db, limiter
 from models import User
 from flask_jwt_extended import create_access_token
-from sqlalchemy import or_ 
-from flasgger import swag_from 
+from sqlalchemy import or_
 import re
+import logging
 
-# --- HELPER FUNCTIONS ---
+logger = logging.getLogger(__name__)
+
+
 def is_password_strong(password):
+    if len(password) > 128:
+        return False, "Password maksimal 128 karakter."
     if len(password) < 8:
         return False, "Password minimal 8 karakter."
     if not re.search(r"\d", password):
@@ -20,18 +24,23 @@ def is_password_strong(password):
         return False, "Password harus mengandung minimal 1 karakter khusus."
     return True, None
 
+
 def is_valid_email(email):
     pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-    if re.match(pattern, email):
-        return True
-    return False
+    return bool(re.match(pattern, email))
 
-# --- BLUEPRINT SETUP ---
+
+def sanitize_input(value, max_length=255):
+    if not value:
+        return value
+    return str(value).strip()[:max_length]
+
+
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
-# --- ROUTES ---
 
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit("3 per minute")
 def register():
     """
     Registrasi Pengguna Baru
@@ -77,47 +86,55 @@ def register():
             msg:
               type: string
               example: "Password lemah: Password harus mengandung minimal 1 angka."
+      429:
+        description: Terlalu banyak permintaan
       500:
         description: Internal Server Error
     """
-    data = request.json
-    username = data.get('username')
-    email = data.get('email')    
-    password = data.get('password')
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"msg": "Request body tidak valid"}), 400
+
+    username = sanitize_input(data.get('username'), max_length=50)
+    email = sanitize_input(data.get('email'), max_length=255)
+    password = data.get('password', '')
 
     if not username or not email or not password:
         return jsonify({"msg": "Username, Email, dan Password wajib diisi"}), 400
-    
+
+    if not re.match(r'^[a-zA-Z0-9_]+$', username):
+        return jsonify({"msg": "Username hanya boleh mengandung huruf, angka, dan underscore"}), 400
+
     if not is_valid_email(email):
         return jsonify({"msg": "Format Email tidak valid"}), 400
 
     is_valid_pass, reason = is_password_strong(password)
     if not is_valid_pass:
         return jsonify({"msg": f"Password lemah: {reason}"}), 400
-    
+
     existing_user = User.query.filter(
         or_(User.username == username, User.email == email)
     ).first()
 
     if existing_user:
-        if existing_user.username == username:
-            return jsonify({"msg": "Username sudah dipakai"}), 400
-        if existing_user.email == email:
-            return jsonify({"msg": "Email sudah terdaftar"}), 400
+        return jsonify({"msg": "Username atau Email sudah terdaftar"}), 400
 
-    new_user = User(username=username, email=email) 
+    new_user = User(username=username, email=email)
     new_user.set_password(password)
-    
+
     try:
         db.session.add(new_user)
         db.session.commit()
+        logger.info(f"[REGISTER SUCCESS] username={username} | IP={request.remote_addr}")
         return jsonify({"msg": "Registrasi Berhasil. Silakan Login"}), 201
     except Exception as e:
         db.session.rollback()
-        print(f"Error Database: {e}")
+        logger.error(f"[REGISTER ERROR] {e} | IP={request.remote_addr}")
         return jsonify({"msg": "Terjadi kesalahan server"}), 500
 
+
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("5 per minute")
 def login():
     """
     Login User
@@ -167,13 +184,24 @@ def login():
         description: Input tidak lengkap
       401:
         description: Password salah atau User tidak ditemukan
+      429:
+        description: Terlalu banyak permintaan
     """
-    data = request.json
-    login_input = data.get('identifier') or data.get('username') or data.get('email')
-    password = data.get('password')
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"msg": "Request body tidak valid"}), 400
+
+    login_input = sanitize_input(
+        data.get('identifier') or data.get('username') or data.get('email'),
+        max_length=255
+    )
+    password = data.get('password', '')
 
     if not login_input or not password:
         return jsonify({"msg": "Harap isi Username/Email dan Password"}), 400
+
+    if len(password) > 128:
+        return jsonify({"msg": "Username/Email atau Password Salah"}), 401
 
     user = User.query.filter(
         or_(User.username == login_input, User.email == login_input)
@@ -181,6 +209,7 @@ def login():
 
     if user and user.check_password(password):
         access_token = create_access_token(identity=str(user.user_id))
+        logger.info(f"[LOGIN SUCCESS] user_id={user.user_id} | IP={request.remote_addr}")
         return jsonify({
             "msg": "Login Sukses",
             "access_token": access_token,
@@ -190,5 +219,6 @@ def login():
                 "email": user.email
             }
         }), 200
-    
+
+    logger.warning(f"[LOGIN FAILED] identifier={login_input} | IP={request.remote_addr}")
     return jsonify({"msg": "Username/Email atau Password Salah"}), 401

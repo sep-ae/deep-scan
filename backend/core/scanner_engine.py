@@ -1,207 +1,301 @@
+import socket
 from modules.reconnaissance import DNSLookup, SubdomainFinder, PortScanner, TechFingerprint
+from modules.http_security import analyze_security_headers, check_cors_misconfig
 from extensions import db
-from models import Scan, ScanResult, ReconData
+from models import Scan, ScanResult, ReconData, Vulnerability
+from helpers.vuln_profiles import VULN_PROFILES
+from helpers.cvss_calculator import calculate_cvss
 from datetime import datetime
 from urllib.parse import urlparse
+import time
 
 
 class ScannerEngine:
-    """
-    Orkestrator utama proses scanning:
-    - Ambil data Scan dari DB
-    - Jalankan modul reconnaissance (DNS, Subdomain, Port, Tech)
-    - Simpan ringkasan dan data detail ke database
-    """
-
     def __init__(self, scan_id):
-        """
-        Inisialisasi engine untuk satu scan tertentu.
-        """
         self.scan_id = scan_id
         self.scan = None
         self.target_url = None
         self.domain = None
         self.ip_address = None
 
+    def update_progress(self, progress, phase):
+        try:
+            self.scan.progress = progress
+            self.scan.current_phase = phase
+            db.session.commit()
+            print(f"[Progress] {progress}% - {phase}")
+        except Exception as e:
+            print(f"[!] Error updating progress: {e}")
+            db.session.rollback()
+
     def run(self):
         try:
-            # Ambil record Scan dari database
             self.scan = Scan.query.get(self.scan_id)
             if not self.scan:
                 raise Exception("Scan not found")
 
-            # Update status awal
-            self.scan.status = 'Running'
-            db.session.commit()
+            self.scan.status = 'running'
+            self.scan.start_time = datetime.now()
+            self.update_progress(5, "Initializing scan...")
 
-            # Ambil URL target dan extract domain
             self.target_url = self.scan.target_url
             self.domain = self._extract_domain(self.target_url)
 
             print(f"[*] Starting reconnaissance for {self.domain}")
 
-            # Jalankan modul-modul reconnaissance
-            dns_results = self._run_dns_lookup()
+            self.update_progress(10, "Reconnaissance & Information Gathering")
+            dns_raw, dns_findings = self._run_dns_lookup()
+            time.sleep(0.5)
+
+            self.update_progress(25, "Scanning subdomains...")
             subdomain_results = self._run_subdomain_finder()
+
+            self.update_progress(40, "Port scanning...")
             port_results = self._run_port_scanner()
+
+            self.update_progress(55, "Technology fingerprinting...")
             tech_results = self._run_tech_fingerprint()
 
-            # Buat record ScanResult sebagai ringkasan
+            self.update_progress(65, "HTTP Security Configuration Check...")
+            http_security_results = self._run_http_security_check()
+
+            self.update_progress(75, "Analyzing vulnerabilities...")
             scan_result = ScanResult(
                 scans_scan_id=self.scan_id,
                 total_vulnerabilities=0,
-                summary=f"Reconnaissance completed. Found {len(subdomain_results)} subdomains, {len(port_results)} open ports."
+                summary=f"Scan completed. Found {len(subdomain_results)} subdomains, {len(port_results)} open ports."
             )
             db.session.add(scan_result)
             db.session.commit()
 
-            # Simpan data detail ke tabel ReconData
-            self._save_recon_data('DNS', dns_results, scan_result.result_id)
-            self._save_recon_data('Subdomain', subdomain_results, scan_result.result_id)
-            self._save_recon_data('Port', port_results, scan_result.result_id)
-            self._save_recon_data('Technology', tech_results, scan_result.result_id)
+            self.update_progress(85, "Web Vulnerabilities Detection")
+            self._process_and_save_results('DNS', dns_raw, scan_result.result_id)
+            self._process_and_save_results('DNS', dns_findings, scan_result.result_id)
+            self._process_and_save_results('Subdomain', subdomain_results, scan_result.result_id)
+            self._process_and_save_results('Port', port_results, scan_result.result_id)
+            self._process_and_save_results('Technology', tech_results, scan_result.result_id)
+            self._process_http_security_results(http_security_results, scan_result.result_id)
 
-            # Update status akhir
-            self.scan.status = 'Completed'
+            self.update_progress(95, "Generating report...")
+            total_v = Vulnerability.query.filter_by(scan_results_result_id=scan_result.result_id).count()
+            scan_result.total_vulnerabilities = total_v
+
+            self.scan.status = 'completed'
             self.scan.end_time = datetime.now()
-            db.session.commit()
+            self.update_progress(100, "Scan completed")
 
-            print(f"[+] Scan completed successfully!")
+            print(f"[+] Scan completed. Total Vulns Found: {total_v}")
             return True
 
         except Exception as e:
             print(f"[!] Error during scan: {e}")
             if self.scan:
-                self.scan.status = 'Failed'
-                db.session.commit()
+                self.scan.status = 'failed'
+                self.scan.error_message = str(e)
+                self.update_progress(0, f"Scan failed: {str(e)}")
             return False
 
     def _extract_domain(self, url):
-        """
-        Ambil nama domain dari URL:
-        - Hapus schema (http/https) dan prefix www.
-        """
         parsed = urlparse(url)
         domain = parsed.netloc or parsed.path
         return domain.replace('www.', '').replace('http://', '').replace('https://', '')
 
     def _run_dns_lookup(self):
-        """
-        Jalankan modul DNSLookup dan set IP address utama untuk port scan.
-        """
         print(f"  [>] DNS Lookup...")
         try:
-            dns = DNSLookup(self.domain)
-            results = dns.run()
-
-            # Simpan satu IP (A record pertama) sebagai target port scan
-            if results.get('A'):
-                # results['A'] bisa list of dict atau list of string tergantung implementasi
-                first_a = results['A'][0]
-                self.ip_address = first_a['ip'] if isinstance(first_a, dict) else first_a
-
-            return results
+            dns_obj = DNSLookup(self.domain)
+            results = dns_obj.run()
+            if 'A' in results and results['A']:
+                self.ip_address = results['A'][0]
+            vuln_findings = dns_obj.enrich_with_vuln()
+            return results, vuln_findings
         except Exception as e:
-            print(f"  [!] DNS Lookup error: {e}")
-            return {}
+            print(f"[!] DNS Lookup error: {e}")
+            return {}, []
 
     def _run_subdomain_finder(self):
-        """
-        Jalankan modul SubdomainFinder untuk enumerasi subdomain.
-        """
         print(f"  [>] Subdomain Finder...")
         try:
-            subdomain = SubdomainFinder(self.domain)
-            results = subdomain.run(max_workers=5)
-            return results
+            finder = SubdomainFinder(self.domain)
+            return finder.run(max_workers=10)
         except Exception as e:
-            print(f"  [!] Subdomain error: {e}")
+            print(f"[!] Subdomain error: {e}")
             return []
 
     def _run_port_scanner(self):
-        """
-        Jalankan modul PortScanner jika IP address sudah tersedia dari DNS lookup.
-        """
+        try:
+            if not self.ip_address:
+                self.ip_address = socket.gethostbyname(self.domain)
+        except:
+            self.ip_address = None
+
         if not self.ip_address:
-            print(f"  [!] Skipping port scan (no IP)")
             return []
 
         print(f"  [>] Port Scanner on {self.ip_address}...")
         try:
             scanner = PortScanner(self.ip_address)
-            results = scanner.run(timeout=0.5, max_workers=20)
-            return results
+            return scanner.run()
         except Exception as e:
-            print(f"  [!] Port scan error: {e}")
+            print(f"[!] Port scanner error: {e}")
             return []
 
     def _run_tech_fingerprint(self):
-        """
-        Jalankan modul TechFingerprint untuk identifikasi teknologi web.
-        """
         print(f"  [>] Tech Fingerprint...")
         try:
             tech = TechFingerprint(self.target_url)
-            results = tech.run()
-            return results
+            return tech.run()
         except Exception as e:
-            print(f"  [!] Tech fingerprint error: {e}")
+            print(f"[!] Tech fingerprint error: {e}")
             return {}
 
-    def _save_recon_data(self, category, data, scan_result_id):
-        """
-        Simpan hasil reconnaissance ke tabel ReconData.
+    def _run_http_security_check(self):
+        print(f"  [>] HTTP Security Configuration Check...")
+        try:
+            headers_result = analyze_security_headers(self.target_url)
+            cors_result = check_cors_misconfig(self.target_url)
+            return {
+                'headers': headers_result,
+                'cors': cors_result
+            }
+        except Exception as e:
+            print(f"[!] HTTP Security check error: {e}")
+            return {}
 
-        - category: label jenis data (DNS / Subdomain / Port / Technology)
-        - data: bisa dict (key → value) atau list (kumpulan item)
-        - scan_result_id: foreign key ke ScanResult yang terkait
-        """
-        # Jika tidak ada data, tidak perlu menyimpan apa-apa
+    def _process_http_security_results(self, http_security_results, result_id):
+        if not http_security_results:
+            return
+
+        headers_result = http_security_results.get('headers', {})
+        cors_result = http_security_results.get('cors', {})
+
+        if headers_result and not headers_result.get('error'):
+            for finding in headers_result.get('findings', []):
+                recon = ReconData(
+                    scan_results_result_id=result_id,
+                    category='HTTP Headers',
+                    item=finding['header'],
+                    details=str(finding)[:500]
+                )
+                db.session.add(recon)
+
+            missing_headers = headers_result.get('missing', [])
+            if missing_headers:
+                profile = VULN_PROFILES.get('missing_security_headers')
+                if profile:
+                    m = profile['metrics']
+                    score, severity, vector = calculate_cvss(
+                        m['av'], m['ac'], m['pr'], m['ui'], m['s'], m['c'], m['i'], m['a']
+                    )
+                    missing_str = ', '.join(missing_headers)
+                    new_vuln = Vulnerability(
+                        scan_results_result_id=result_id,
+                        category=profile['category'],
+                        vuln_name=profile['name'],
+                        severity=severity,
+                        description=f"{profile['description']}\nAffected: {missing_str}\nVector: {vector}\nScore: {score}",
+                        recommendation=profile['recommendation']
+                    )
+                    db.session.add(new_vuln)
+                    print(f"  [!] Vuln found: {profile['name']}")
+
+        if cors_result and not cors_result.get('error'):
+            cors_headers = cors_result.get('cors_headers', {})
+            if cors_headers:
+                recon = ReconData(
+                    scan_results_result_id=result_id,
+                    category='CORS',
+                    item='CORS Configuration',
+                    details=str(cors_headers)[:500]
+                )
+                db.session.add(recon)
+
+            cors_issues = cors_result.get('issues', [])
+            if cors_issues:
+                profile = VULN_PROFILES.get('cors_misconfiguration')
+                if profile:
+                    m = profile['metrics']
+                    score, severity, vector = calculate_cvss(
+                        m['av'], m['ac'], m['pr'], m['ui'], m['s'], m['c'], m['i'], m['a']
+                    )
+                    issues_str = '; '.join(cors_issues)
+                    new_vuln = Vulnerability(
+                        scan_results_result_id=result_id,
+                        category=profile['category'],
+                        vuln_name=profile['name'],
+                        severity=severity,
+                        description=f"{profile['description']}\nAffected: CORS Policy\nVector: {vector}\nScore: {score}\nDetail: {issues_str}",
+                        recommendation=profile['recommendation']
+                    )
+                    db.session.add(new_vuln)
+                    print(f"  [!] Vuln found: {profile['name']}")
+
+        db.session.commit()
+
+    def _process_and_save_results(self, category, data, result_id):
         if not data:
             return
 
-        try:
-            # Data berbentuk dict: simpan setiap key sebagai satu baris
-            if isinstance(data, dict):
-                for key, value in data.items():
-                    # Skip jika value kosong atau container kosong
-                    if value is None or (isinstance(value, (list, dict)) and not value):
-                        continue
+        if isinstance(data, list):
+            for entry in data:
+                if isinstance(entry, dict):
+                    item_name = str(entry.get('subdomain') or entry.get('port') or 'Unknown')
+                    details_str = str(entry)
+                    vuln_key = entry.get('vuln_key')
+                else:
+                    item_name = str(entry)
+                    details_str = str(entry)
+                    vuln_key = None
 
-                    recon = ReconData(
-                        scan_results_result_id=scan_result_id,
-                        category=category,
-                        item=str(key)[:255],
-                        details=str(value)[:500]
-                    )
-                    db.session.add(recon)
+                recon = ReconData(
+                    scan_results_result_id=result_id,
+                    category=category,
+                    item=item_name[:255],
+                    details=details_str[:500]
+                )
+                db.session.add(recon)
 
-            # Data berbentuk list: simpan semua item (tanpa limit)
-            elif isinstance(data, list):
-                for item in data:
-                    # Tentukan nama item yang paling relevan untuk kolom "item"
-                    if isinstance(item, dict):
-                        item_name = str(
-                            item.get(
-                                'subdomain',
-                                item.get('port', list(item.keys())[0] if item else 'N/A')
-                            )
-                        )
-                    else:
-                        item_name = str(item)
+                if vuln_key:
+                    self._create_vulnerability_entry(vuln_key, result_id, item_name)
 
-                    recon = ReconData(
-                        scan_results_result_id=scan_result_id,
-                        category=category,
-                        item=item_name[:255],
-                        details=str(item)[:500]
-                    )
-                    db.session.add(recon)
+        elif isinstance(data, dict):
+            for key, value in data.items():
+                recon = ReconData(
+                    scan_results_result_id=result_id,
+                    category=category,
+                    item=str(key)[:255],
+                    details=str(value)[:500]
+                )
+                db.session.add(recon)
 
-            # Commit semua perubahan jika berhasil
-            db.session.commit()
+        db.session.commit()
 
-        except Exception as e:
-            # Rollback kalau ada error saat menyimpan
-            print(f"[!] Error saving recon data ({category}): {e}")
-            db.session.rollback()
+    def _create_vulnerability_entry(self, vuln_key, result_id, affected_item):
+        profile = VULN_PROFILES.get(vuln_key)
+        if not profile:
+            return
+
+        m = profile['metrics']
+        score, severity, vector = calculate_cvss(
+            m['av'], m['ac'], m['pr'], m['ui'], m['s'], m['c'], m['i'], m['a']
+        )
+
+        existing = Vulnerability.query.filter_by(
+            scan_results_result_id=result_id,
+            vuln_name=profile['name']
+        ).first()
+
+        if existing:
+            existing.description += f"\n- Terdeteksi pada: {affected_item}"
+        else:
+            new_vuln = Vulnerability(
+                scan_results_result_id=result_id,
+                category=profile['category'],
+                vuln_name=profile['name'],
+                severity=severity,
+                description=f"{profile['description']}\nAffected: {affected_item}\nVector: {vector}\nScore: {score}",
+                recommendation=profile['recommendation']
+            )
+            db.session.add(new_vuln)
+
+        db.session.commit()

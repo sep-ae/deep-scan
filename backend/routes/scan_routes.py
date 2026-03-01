@@ -13,8 +13,6 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.units import inch
 from io import BytesIO
 import threading
-
-# Import Scanner Engine
 from core.scanner_engine import ScannerEngine
 
 scan_bp = Blueprint('scan', __name__, url_prefix='/api/scan')
@@ -27,7 +25,6 @@ def is_valid_url(url):
 
 
 def get_local_time():
-    """Get current time in Asia/Jakarta timezone (WIB)"""
     jakarta_tz = pytz.timezone('Asia/Jakarta')
     return datetime.now(jakarta_tz)
 
@@ -36,32 +33,45 @@ def get_local_time():
 @jwt_required()
 def start_scan():
     """
-    Mulai Scanning Baru
+    Mulai Scan Baru
     ---
     tags:
-      - Scanning
+      - Scan
     security:
       - Bearer: []
-    summary: Trigger proses scan
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          type: object
-          required:
-            - target_url
-          properties:
-            target_url:
-              type: string
-              example: "https://example.com"
+    summary: Memulai proses scanning target
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - target_url
+            properties:
+              target_url:
+                type: string
+                example: https://example.com
     responses:
       201:
         description: Scan berhasil dimulai
+        schema:
+          type: object
+          properties:
+            msg:
+              type: string
+            scan_id:
+              type: integer
+            target:
+              type: string
+            status:
+              type: string
       400:
-        description: Validasi gagal
+        description: Input tidak valid
+      401:
+        description: Unauthorized
       500:
-        description: Server error
+        description: Gagal memulai scan
     """
     user_id = get_jwt_identity()
     data = request.json
@@ -78,39 +88,38 @@ def start_scan():
         target_url=normalized_url,
         users_user_id=int(user_id),
         status='pending',
-        start_time=get_local_time() 
+        start_time=get_local_time(),
+        progress=0,
+        current_phase='Waiting to start...'
     )
 
     try:
         db.session.add(new_scan)
         db.session.commit()
-        
-        # ✅ TRIGGER SCANNER ENGINE IN BACKGROUND THREAD
+
         def run_scan_async(scan_id):
-            """Run scan in background"""
             from app import create_app
             app = create_app()
             with app.app_context():
                 engine = ScannerEngine(scan_id)
                 engine.run()
-        
+
         scan_thread = threading.Thread(
-            target=run_scan_async, 
+            target=run_scan_async,
             args=(new_scan.scan_id,)
         )
         scan_thread.daemon = True
         scan_thread.start()
-        
+
         return jsonify({
             "msg": "Scan berhasil dimulai",
             "scan_id": new_scan.scan_id,
             "target": normalized_url,
             "status": "pending"
         }), 201
-        
+
     except Exception as e:
         db.session.rollback()
-        print(f"Error starting scan: {e}")
         return jsonify({"msg": "Gagal memulai scan", "error": str(e)}), 500
 
 
@@ -118,13 +127,13 @@ def start_scan():
 @jwt_required()
 def get_scan_status(scan_id):
     """
-    Cek Status Scan
+    Ambil Status Scan
     ---
     tags:
-      - Scanning
+      - Scan
     security:
       - Bearer: []
-    summary: Mendapatkan status scan yang sedang berjalan
+    summary: Melihat progress scan secara realtime
     parameters:
       - name: scan_id
         in: path
@@ -135,32 +144,28 @@ def get_scan_status(scan_id):
         description: Status scan
       404:
         description: Scan tidak ditemukan
+      401:
+        description: Unauthorized
     """
     user_id = get_jwt_identity()
-    
+
     scan = Scan.query.filter_by(
         scan_id=scan_id,
         users_user_id=int(user_id)
     ).first()
-    
+
     if not scan:
         return jsonify({"msg": "Scan tidak ditemukan"}), 404
-    
-    progress = 0
-    if scan.status == 'pending':
-        progress = 0
-    elif scan.status == 'running':
-        progress = 50
-    elif scan.status == 'completed':
-        progress = 100
-    
+
     return jsonify({
         "scan_id": scan.scan_id,
         "target": scan.target_url,
         "status": scan.status,
+        "progress": scan.progress or 0,
+        "current_phase": scan.current_phase or "Initializing...",
         "start_time": scan.start_time.strftime("%Y-%m-%d %H:%M:%S") if scan.start_time else None,
         "end_time": scan.end_time.strftime("%Y-%m-%d %H:%M:%S") if scan.end_time else None,
-        "progress": progress
+        "error_message": scan.error_message
     }), 200
 
 
@@ -168,23 +173,25 @@ def get_scan_status(scan_id):
 @jwt_required()
 def get_all_scans():
     """
-    Get All Scan History
+    Ambil Semua Riwayat Scan
     ---
     tags:
-      - Scanning
+      - Scan
     security:
       - Bearer: []
-    summary: Mendapatkan semua riwayat scan user
+    summary: Menampilkan seluruh riwayat scan user
     responses:
       200:
-        description: List semua scan
+        description: List riwayat scan
+      401:
+        description: Unauthorized
     """
     user_id = get_jwt_identity()
-    
+
     all_scans = Scan.query.filter_by(users_user_id=int(user_id))\
         .order_by(desc(Scan.start_time))\
         .all()
-    
+
     scans_data = []
     for scan in all_scans:
         scans_data.append({
@@ -195,7 +202,7 @@ def get_all_scans():
             "vuln_count": scan.result.total_vulnerabilities if scan.result else 0,
             "start_time": scan.start_time.isoformat() if scan.start_time else None
         })
-    
+
     return jsonify(scans_data), 200
 
 
@@ -203,13 +210,13 @@ def get_all_scans():
 @jwt_required()
 def get_scan_detail(scan_id):
     """
-    Ambil Detail Hasil Scan
+    Ambil Detail Scan
     ---
     tags:
-      - Scanning
+      - Scan
     security:
       - Bearer: []
-    summary: Detail lengkap scan, vulnerabilities, dan recon data
+    summary: Melihat detail hasil scan termasuk vulnerability dan recon
     parameters:
       - name: scan_id
         in: path
@@ -217,34 +224,35 @@ def get_scan_detail(scan_id):
         type: integer
     responses:
       200:
-        description: Detail scan lengkap
+        description: Detail scan
       404:
         description: Scan tidak ditemukan
+      401:
+        description: Unauthorized
     """
     user_id = get_jwt_identity()
-    
+
     scan = Scan.query.filter_by(
         scan_id=scan_id,
         users_user_id=int(user_id)
     ).first()
-    
+
     if not scan:
         return jsonify({"msg": "Scan tidak ditemukan"}), 404
 
     result_data = None
     vulnerabilities_data = []
     recon_data_list = []
-    
+
     if scan.result:
         result_data = {
             "total_vulnerabilities": scan.result.total_vulnerabilities,
-            "high_severity": 0,  # Hitung manual dari vulnerabilities
+            "high_severity": 0,
             "medium_severity": 0,
             "low_severity": 0,
             "summary": scan.result.summary
         }
-        
-        # Hitung severity dari vulnerabilities
+
         if scan.result.vulnerabilities:
             for vuln in scan.result.vulnerabilities:
                 vulnerabilities_data.append({
@@ -255,16 +263,15 @@ def get_scan_detail(scan_id):
                     "description": vuln.description,
                     "recommendation": vuln.recommendation
                 })
-                
-                # Count severity
-                if vuln.severity.lower() == 'high':
+
+                if vuln.severity.lower() in ('high', 'critical'):
                     result_data['high_severity'] += 1
                 elif vuln.severity.lower() == 'medium':
                     result_data['medium_severity'] += 1
                 elif vuln.severity.lower() == 'low':
                     result_data['low_severity'] += 1
-        
-        # Get recon data
+
+
         if scan.result.recon_data:
             for recon in scan.result.recon_data:
                 recon_data_list.append({
@@ -291,27 +298,29 @@ def get_scan_detail(scan_id):
 @jwt_required()
 def get_scan_stats():
     """
-    Get Scan Statistics
+    Statistik Scan User
     ---
     tags:
-      - Scanning
+      - Scan
     security:
       - Bearer: []
-    summary: Statistik scan user untuk dashboard
+    summary: Mengambil statistik scan berdasarkan status dan hasil
     responses:
       200:
         description: Statistik scan
+      401:
+        description: Unauthorized
     """
     user_id = get_jwt_identity()
-    
+
     user_scans = Scan.query.filter_by(users_user_id=int(user_id)).all()
-    
+
     total_scan = len(user_scans)
     vulnerable_count = 0
     secure_count = 0
     pending_count = 0
     failed_count = 0
-    
+
     for scan in user_scans:
         if scan.status == 'pending':
             pending_count += 1
@@ -322,7 +331,7 @@ def get_scan_stats():
                 vulnerable_count += 1
             else:
                 secure_count += 1
-    
+
     return jsonify({
         "total": total_scan,
         "vulnerable": vulnerable_count,
@@ -336,13 +345,13 @@ def get_scan_stats():
 @jwt_required()
 def download_report(scan_id):
     """
-    Download PDF Report
+    Download Laporan Scan PDF
     ---
     tags:
-      - Scanning
+      - Scan
     security:
       - Bearer: []
-    summary: Download laporan scan dalam format PDF
+    summary: Mengunduh laporan hasil scan dalam bentuk PDF
     parameters:
       - name: scan_id
         in: path
@@ -350,25 +359,27 @@ def download_report(scan_id):
         type: integer
     responses:
       200:
-        description: PDF file
+        description: File PDF report
       404:
         description: Scan tidak ditemukan
+      401:
+        description: Unauthorized
     """
     user_id = get_jwt_identity()
-    
+
     scan = Scan.query.filter_by(
         scan_id=scan_id,
         users_user_id=int(user_id)
     ).first()
-    
+
     if not scan:
         return jsonify({"msg": "Scan tidak ditemukan"}), 404
-    
+
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     elements = []
     styles = getSampleStyleSheet()
-    
+
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -379,14 +390,14 @@ def download_report(scan_id):
     )
     elements.append(Paragraph("Deep-Scan Security Report", title_style))
     elements.append(Spacer(1, 0.3 * inch))
-    
+
     info_data = [
         ['Target URL:', scan.target_url],
         ['Scan ID:', str(scan.scan_id)],
         ['Scan Date:', scan.start_time.strftime("%d %b %Y, %H:%M:%S") if scan.start_time else 'N/A'],
         ['Status:', scan.status],
     ]
-    
+
     info_table = Table(info_data, colWidths=[2*inch, 4*inch])
     info_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e5e7eb')),
@@ -399,18 +410,22 @@ def download_report(scan_id):
     ]))
     elements.append(info_table)
     elements.append(Spacer(1, 0.5 * inch))
-    
+
     if scan.result:
         elements.append(Paragraph("Vulnerability Summary", styles['Heading2']))
         elements.append(Spacer(1, 0.2 * inch))
-        
+
+        high_count = sum(1 for v in scan.result.vulnerabilities if v.severity.lower() == 'high')
+        medium_count = sum(1 for v in scan.result.vulnerabilities if v.severity.lower() == 'medium')
+        low_count = sum(1 for v in scan.result.vulnerabilities if v.severity.lower() == 'low')
+
         summary_data = [
             ['Total Vulnerabilities', str(scan.result.total_vulnerabilities)],
-            ['High Severity', str(scan.result.high_severity_count or 0)],
-            ['Medium Severity', str(scan.result.medium_severity_count or 0)],
-            ['Low Severity', str(scan.result.low_severity_count or 0)]
+            ['High Severity', str(high_count)],
+            ['Medium Severity', str(medium_count)],
+            ['Low Severity', str(low_count)]
         ]
-        
+
         summary_table = Table(summary_data, colWidths=[3*inch, 3*inch])
         summary_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
@@ -423,20 +438,20 @@ def download_report(scan_id):
         ]))
         elements.append(summary_table)
         elements.append(PageBreak())
-        
+
         if scan.result.vulnerabilities:
             elements.append(Paragraph("Vulnerability Details", styles['Heading2']))
             elements.append(Spacer(1, 0.2 * inch))
-            
+
             for vuln in scan.result.vulnerabilities:
                 vuln_data = [
-                    ['Name:', vuln.vulnerability_name],
+                    ['Name:', vuln.vuln_name],
                     ['Severity:', vuln.severity.upper()],
-                    ['Affected URL:', vuln.affected_url or 'N/A'],
+                    ['Category:', vuln.category],
                     ['Description:', vuln.description or 'N/A'],
                     ['Recommendation:', vuln.recommendation or 'N/A']
                 ]
-                
+
                 vuln_table = Table(vuln_data, colWidths=[1.5*inch, 4.5*inch])
                 vuln_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f3f4f6')),
@@ -450,12 +465,12 @@ def download_report(scan_id):
                 ]))
                 elements.append(vuln_table)
                 elements.append(Spacer(1, 0.3 * inch))
-    
+
     doc.build(elements)
     buffer.seek(0)
-    
+
     filename = f"DeepScan_Report_{scan_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    
+
     return send_file(
         buffer,
         as_attachment=True,

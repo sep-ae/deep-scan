@@ -5,22 +5,23 @@ import { toast } from 'vue-sonner'
 import api from '@/services/api'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Separator } from '@/components/ui/separator'
+
+import OverviewTab from '@/components/scan/OverviewTab.vue'
+import ReconnaissanceTab from '@/components/scan/ReconnaissanceTab.vue'
+import VulnerabilitiesTab from '@/components/scan/VulnerabilitiesTab.vue'
+import RecommendationsTab from '@/components/scan/RecommendationsTab.vue'
 
 import { 
   ArrowLeft, CircleUser, Menu, Package2, Home, Scan, History,
-  Shield, AlertTriangle, AlertCircle, Info, CheckCircle2,
-  Clock, ExternalLink, FileText, TrendingUp, Search, 
-  Server, Globe, Lock, Code
+  AlertTriangle, AlertCircle, Info, CheckCircle2,
+  Clock, ExternalLink, FileText
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -28,12 +29,10 @@ const route = useRoute()
 const scanId = route.params.id
 const username = ref('Pengguna')
 
-// Data state
 const scanDetail = ref(null)
 const isLoading = ref(true)
 const activeTab = ref('overview')
 
-// Get username dari localStorage
 const storedUser = localStorage.getItem('user')
 if (storedUser) {
   try {
@@ -44,7 +43,6 @@ if (storedUser) {
   }
 }
 
-// Fetch scan detail
 const fetchScanDetail = async () => {
   try {
     isLoading.value = true
@@ -71,33 +69,6 @@ const fetchScanDetail = async () => {
   }
 }
 
-// Computed - Vulnerabilities by severity
-const vulnerabilitiesBySeverity = computed(() => {
-  if (!scanDetail.value?.vulnerabilities) return { high: [], medium: [], low: [] }
-  
-  return {
-    high: scanDetail.value.vulnerabilities.filter(v => v.severity === 'high'),
-    medium: scanDetail.value.vulnerabilities.filter(v => v.severity === 'medium'),
-    low: scanDetail.value.vulnerabilities.filter(v => v.severity === 'low')
-  }
-})
-
-// Computed - Recon data by category
-const reconDataByCategory = computed(() => {
-  if (!scanDetail.value?.recon_data) return {}
-  
-  const grouped = {}
-  scanDetail.value.recon_data.forEach(recon => {
-    if (!grouped[recon.category]) {
-      grouped[recon.category] = []
-    }
-    grouped[recon.category].push(recon)
-  })
-  
-  return grouped
-})
-
-// Computed - Overall status
 const overallStatus = computed(() => {
   if (!scanDetail.value?.result) return { text: 'Unknown', color: 'neutral', icon: Info }
   
@@ -113,7 +84,6 @@ const overallStatus = computed(() => {
   }
 })
 
-// Navigation functions
 const goToDashboard = () => router.push('/dashboard')
 const goToScan = () => router.push('/scan')
 const goToHistory = () => router.push('/history')
@@ -130,41 +100,7 @@ const handleLogout = () => {
   router.push('/login')
 }
 
-// Check active menu
 const isActive = (path) => route.path === path
-
-// Helper - Severity badge
-const getSeverityBadge = (severity) => {
-  const badges = {
-    high: { text: 'High', class: 'bg-red-200 text-red-800 border-red-300' },
-    medium: { text: 'Medium', class: 'bg-yellow-200 text-yellow-800 border-yellow-300' },
-    low: { text: 'Low', class: 'bg-blue-200 text-blue-800 border-blue-300' }
-  }
-  return badges[severity] || badges.low
-}
-
-// Helper - Severity icon
-const getSeverityIcon = (severity) => {
-  const icons = {
-    high: AlertTriangle,
-    medium: AlertCircle,
-    low: Info
-  }
-  return icons[severity] || Info
-}
-
-// Helper - Category icon
-const getCategoryIcon = (category) => {
-  const icons = {
-    'DNS': Globe,
-    'Subdomain': Server,
-    'Port': Lock,
-    'Technology': Code,
-    'Headers': Shield,
-    'SSL': Lock
-  }
-  return icons[category] || Search
-}
 
 onMounted(() => {
   fetchScanDetail()
@@ -174,7 +110,6 @@ onMounted(() => {
 <template>
   <div class="flex min-h-screen w-full flex-col bg-neutral-50/50">
 
-    <!-- NAVBAR (sama seperti sebelumnya) -->
     <header class="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
       
       <nav class="hidden flex-col gap-6 text-lg font-medium md:flex md:flex-row md:items-center md:gap-5 md:text-sm lg:gap-6">
@@ -208,7 +143,6 @@ onMounted(() => {
         </a>
       </nav>
 
-      <!-- Mobile Menu -->
       <Sheet>
         <SheetTrigger as-child>
           <Button variant="outline" size="icon" class="shrink-0 md:hidden">
@@ -262,12 +196,10 @@ onMounted(() => {
       </div>
     </header>
 
-    <!-- MAIN CONTENT -->
-    <main class="flex-1 py-8 px-4 md:px-8">
+    <main class="flex-1 py-8 px-4">
       
-      <div class="max-w-6xl mx-auto space-y-6">
+      <div class="max-w-7xl mx-auto space-y-6">
 
-        <!-- Back Button -->
         <Button 
           variant="ghost" 
           size="sm" 
@@ -278,16 +210,13 @@ onMounted(() => {
           Kembali ke Riwayat
         </Button>
 
-        <!-- Loading State -->
         <div v-if="isLoading" class="space-y-6">
           <Skeleton class="h-32 w-full" />
           <Skeleton class="h-96 w-full" />
         </div>
 
-        <!-- Content -->
         <div v-else-if="scanDetail" class="space-y-6">
 
-          <!-- Header Card -->
           <Card class="border-none shadow-lg">
             <CardContent class="pt-6">
               
@@ -322,7 +251,6 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Stats Grid -->
               <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 
                 <div class="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
@@ -367,7 +295,6 @@ onMounted(() => {
             </CardContent>
           </Card>
 
-          <!-- Summary Alert -->
           <Alert v-if="scanDetail.result?.summary" class="bg-blue-50 border-blue-200">
             <FileText class="h-4 w-4 text-blue-600" />
             <AlertTitle class="text-blue-900">Ringkasan Hasil</AlertTitle>
@@ -376,7 +303,6 @@ onMounted(() => {
             </AlertDescription>
           </Alert>
 
-          <!-- Tabs -->
           <Tabs v-model="activeTab" default-value="overview" class="w-full">
             <TabsList class="grid w-full grid-cols-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -389,254 +315,23 @@ onMounted(() => {
               <TabsTrigger value="recommendations">Rekomendasi</TabsTrigger>
             </TabsList>
 
-            <!-- Overview Tab -->
-            <TabsContent value="overview" class="space-y-4">
-              
-              <Card class="border-none shadow-lg">
-                <CardHeader>
-                  <CardTitle class="flex items-center gap-2">
-                    <TrendingUp class="h-5 w-5" />
-                    Breakdown by Severity
-                  </CardTitle>
-                </CardHeader>
-                <CardContent class="space-y-4">
-                  
-                  <!-- High Severity -->
-                  <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2 text-sm font-medium text-red-700">
-                        <AlertTriangle class="h-4 w-4" />
-                        High Severity
-                      </div>
-                      <span class="text-sm font-bold text-red-700">
-                        {{ vulnerabilitiesBySeverity.high.length }}
-                      </span>
-                    </div>
-                    <div class="h-2 bg-neutral-100 rounded-full overflow-hidden">
-                      <div 
-                        class="h-full bg-red-500"
-                        :style="`width: ${(vulnerabilitiesBySeverity.high.length / (scanDetail.result?.total_vulnerabilities || 1)) * 100}%`"
-                      ></div>
-                    </div>
-                  </div>
-
-                  <!-- Medium Severity -->
-                  <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2 text-sm font-medium text-yellow-700">
-                        <AlertCircle class="h-4 w-4" />
-                        Medium Severity
-                      </div>
-                      <span class="text-sm font-bold text-yellow-700">
-                        {{ vulnerabilitiesBySeverity.medium.length }}
-                      </span>
-                    </div>
-                    <div class="h-2 bg-neutral-100 rounded-full overflow-hidden">
-                      <div 
-                        class="h-full bg-yellow-500"
-                        :style="`width: ${(vulnerabilitiesBySeverity.medium.length / (scanDetail.result?.total_vulnerabilities || 1)) * 100}%`"
-                      ></div>
-                    </div>
-                  </div>
-
-                  <!-- Low Severity -->
-                  <div class="space-y-2">
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2 text-sm font-medium text-blue-700">
-                        <Info class="h-4 w-4" />
-                        Low Severity
-                      </div>
-                      <span class="text-sm font-bold text-blue-700">
-                        {{ vulnerabilitiesBySeverity.low.length }}
-                      </span>
-                    </div>
-                    <div class="h-2 bg-neutral-100 rounded-full overflow-hidden">
-                      <div 
-                        class="h-full bg-blue-500"
-                        :style="`width: ${(vulnerabilitiesBySeverity.low.length / (scanDetail.result?.total_vulnerabilities || 1)) * 100}%`"
-                      ></div>
-                    </div>
-                  </div>
-
-                </CardContent>
-              </Card>
-
+            <TabsContent value="overview" class="mt-4">
+              <OverviewTab 
+                :vulnerabilities="scanDetail.vulnerabilities || []"
+                :total-vulnerabilities="scanDetail.result?.total_vulnerabilities || 0"
+              />
             </TabsContent>
 
-            <!-- Reconnaissance Tab (BARU!) -->
-            <TabsContent value="reconnaissance" class="space-y-4">
-              
-              <Card v-if="!scanDetail.recon_data || scanDetail.recon_data.length === 0" class="border-none shadow-lg">
-                <CardContent class="py-12 text-center">
-                  <Search class="h-16 w-16 mx-auto mb-4 text-neutral-300" />
-                  <h3 class="font-semibold text-lg text-neutral-900 mb-2">
-                    Tidak Ada Data Reconnaissance
-                  </h3>
-                  <p class="text-sm text-neutral-600">
-                    Belum ada informasi yang dikumpulkan saat fase reconnaissance.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <div v-else class="space-y-4">
-                <Card 
-                  v-for="(items, category) in reconDataByCategory" 
-                  :key="category"
-                  class="border-none shadow-lg"
-                >
-                  <CardHeader>
-                    <CardTitle class="flex items-center gap-2 text-lg">
-                      <component :is="getCategoryIcon(category)" class="h-5 w-5 text-blue-600" />
-                      {{ category }}
-                    </CardTitle>
-                    <CardDescription>{{ items.length }} item(s) ditemukan</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Item</TableHead>
-                          <TableHead>Details</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow v-for="item in items" :key="item.recon_id">
-                          <TableCell class="font-medium">{{ item.item }}</TableCell>
-                          <TableCell class="text-sm text-neutral-600">{{ item.details }}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
-              </div>
-
+            <TabsContent value="reconnaissance" class="mt-4">
+              <ReconnaissanceTab :recon-data="scanDetail.recon_data || []" />
             </TabsContent>
 
-            <!-- Vulnerabilities Tab -->
-            <TabsContent value="vulnerabilities" class="space-y-4">
-              
-              <!-- Empty State -->
-              <Card v-if="!scanDetail.vulnerabilities || scanDetail.vulnerabilities.length === 0" class="border-none shadow-lg">
-                <CardContent class="py-12 text-center">
-                  <CheckCircle2 class="h-16 w-16 mx-auto mb-4 text-green-500" />
-                  <h3 class="font-semibold text-lg text-neutral-900 mb-2">
-                    Tidak Ada Kerentanan Ditemukan
-                  </h3>
-                  <p class="text-sm text-neutral-600">
-                    Website Anda aman dari kerentanan yang umum ditemukan.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <!-- Vulnerabilities List -->
-              <Accordion v-else type="single" collapsible class="space-y-3">
-                <AccordionItem 
-                  v-for="(vuln, index) in scanDetail.vulnerabilities" 
-                  :key="vuln.vuln_id"
-                  :value="`vuln-${index}`"
-                  class="border-none"
-                >
-                  <Card class="border-none shadow-lg">
-                    <AccordionTrigger class="px-6 py-4 hover:no-underline">
-                      <div class="flex items-start gap-3 w-full">
-                        <component 
-                          :is="getSeverityIcon(vuln.severity)" 
-                          class="h-5 w-5 mt-0.5 shrink-0"
-                          :class="{
-                            'text-red-600': vuln.severity === 'high',
-                            'text-yellow-600': vuln.severity === 'medium',
-                            'text-blue-600': vuln.severity === 'low'
-                          }"
-                        />
-                        <div class="flex-1 text-left">
-                          <div class="flex items-center gap-2 mb-1">
-                            <h3 class="font-semibold text-neutral-900">{{ vuln.name }}</h3>
-                            <Badge variant="secondary" :class="getSeverityBadge(vuln.severity).class">
-                              {{ getSeverityBadge(vuln.severity).text }}
-                            </Badge>
-                          </div>
-                          <p class="text-sm text-neutral-600">{{ vuln.affected_url }}</p>
-                        </div>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent class="px-6 pb-4">
-                      <Separator class="mb-4" />
-                      
-                      <div class="space-y-4">
-                        
-                        <!-- Description -->
-                        <div>
-                          <h4 class="font-semibold text-sm text-neutral-900 mb-2">Deskripsi</h4>
-                          <p class="text-sm text-neutral-700">{{ vuln.description }}</p>
-                        </div>
-
-                        <!-- Recommendation -->
-                        <div v-if="vuln.recommendation">
-                          <h4 class="font-semibold text-sm text-neutral-900 mb-2">Rekomendasi Perbaikan</h4>
-                          <p class="text-sm text-neutral-700">{{ vuln.recommendation }}</p>
-                        </div>
-
-                        <!-- Technical Info -->
-                        <div class="flex flex-wrap gap-4 text-sm">
-                          <div v-if="vuln.cwe_id">
-                            <span class="text-neutral-600">CWE ID:</span>
-                            <span class="font-medium text-neutral-900 ml-1">{{ vuln.cwe_id }}</span>
-                          </div>
-                          <div v-if="vuln.owasp_category">
-                            <span class="text-neutral-600">OWASP:</span>
-                            <span class="font-medium text-neutral-900 ml-1">{{ vuln.owasp_category }}</span>
-                          </div>
-                        </div>
-
-                      </div>
-                    </AccordionContent>
-                  </Card>
-                </AccordionItem>
-              </Accordion>
-
+            <TabsContent value="vulnerabilities" class="mt-4">
+              <VulnerabilitiesTab :vulnerabilities="scanDetail.vulnerabilities || []" />
             </TabsContent>
 
-            <!-- Recommendations Tab -->
-            <TabsContent value="recommendations" class="space-y-4">
-              
-              <Card class="border-none shadow-lg">
-                <CardHeader>
-                  <CardTitle>Langkah-langkah Perbaikan</CardTitle>
-                  <CardDescription>
-                    Ikuti rekomendasi berikut untuk meningkatkan keamanan website Anda
-                  </CardDescription>
-                </CardHeader>
-                <CardContent class="space-y-4">
-                  
-                  <div v-if="vulnerabilitiesBySeverity.high.length > 0">
-                    <Alert class="bg-red-50 border-red-200 mb-4">
-                      <AlertTriangle class="h-4 w-4 text-red-600" />
-                      <AlertTitle class="text-red-900">Prioritas Tinggi</AlertTitle>
-                      <AlertDescription class="text-red-800">
-                        Perbaiki {{ vulnerabilitiesBySeverity.high.length }} kerentanan kritis segera untuk mencegah serangan berbahaya.
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-
-                  <div class="space-y-3">
-                    <div 
-                      v-for="(vuln, index) in scanDetail.vulnerabilities" 
-                      :key="index"
-                      class="flex items-start gap-3 p-4 rounded-lg bg-neutral-50 border border-neutral-200"
-                    >
-                      <div class="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0 text-sm font-medium text-blue-700">
-                        {{ index + 1 }}
-                      </div>
-                      <div class="flex-1">
-                        <h4 class="font-semibold text-neutral-900 mb-1">{{ vuln.name }}</h4>
-                        <p class="text-sm text-neutral-700">{{ vuln.recommendation || 'Lihat dokumentasi untuk informasi lebih lanjut.' }}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                </CardContent>
-              </Card>
-
+            <TabsContent value="recommendations" class="mt-4">
+              <RecommendationsTab :vulnerabilities="scanDetail.vulnerabilities || []" />
             </TabsContent>
 
           </Tabs>
