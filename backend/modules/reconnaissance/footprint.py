@@ -71,13 +71,13 @@ class TechFingerprint:
         # Ditambahkan favicon.ico untuk hashing
         endpoints = [
             '',               
-            '/favicon.ico',   # PENTING: Untuk bypass Cloudflare
+            '/favicon.ico',   
             '/admin',         
             '/login',         
             '/robots.txt',    
             '/sitemap.xml',
             '/wp-json/',      
-            '/composer.json', # PHP Config
+            '/composer.json', 
             '/package.json'   # JS Config
         ]
         
