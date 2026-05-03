@@ -14,6 +14,8 @@ from reportlab.lib.units import inch
 from io import BytesIO
 import threading
 from core.scanner_engine import ScannerEngine
+from core.report_generator import generate_pdf_report
+from extensions import limiter 
 
 scan_bp = Blueprint('scan', __name__, url_prefix='/api/scan')
 
@@ -125,6 +127,7 @@ def start_scan():
 
 @scan_bp.route('/status/<int:scan_id>', methods=['GET'])
 @jwt_required()
+@limiter.limit("500 per hour") 
 def get_scan_status(scan_id):
     """
     Ambil Status Scan
@@ -157,6 +160,7 @@ def get_scan_status(scan_id):
     if not scan:
         return jsonify({"msg": "Scan tidak ditemukan"}), 404
 
+    db.session.refresh(scan)
     return jsonify({
         "scan_id": scan.scan_id,
         "target": scan.target_url,
@@ -255,13 +259,22 @@ def get_scan_detail(scan_id):
 
         if scan.result.vulnerabilities:
             for vuln in scan.result.vulnerabilities:
+                poc_data = None
+                if vuln.poc:
+                    poc_data = {
+                        "payload": vuln.poc.payload,
+                        "response": vuln.poc.response,
+                        "http_method": vuln.poc.http_method,
+                    }
+
                 vulnerabilities_data.append({
                     "vuln_id": vuln.vuln_id,
                     "name": vuln.vuln_name,
                     "category": vuln.category,
                     "severity": vuln.severity,
                     "description": vuln.description,
-                    "recommendation": vuln.recommendation
+                    "recommendation": vuln.recommendation,
+                    "poc": poc_data,
                 })
 
                 if vuln.severity.lower() in ('high', 'critical'):
@@ -344,29 +357,7 @@ def get_scan_stats():
 @scan_bp.route('/<int:scan_id>/report', methods=['GET'])
 @jwt_required()
 def download_report(scan_id):
-    """
-    Download Laporan Scan PDF
-    ---
-    tags:
-      - Scan
-    security:
-      - Bearer: []
-    summary: Mengunduh laporan hasil scan dalam bentuk PDF
-    parameters:
-      - name: scan_id
-        in: path
-        required: true
-        type: integer
-    responses:
-      200:
-        description: File PDF report
-      404:
-        description: Scan tidak ditemukan
-      401:
-        description: Unauthorized
-    """
     user_id = get_jwt_identity()
-
     scan = Scan.query.filter_by(
         scan_id=scan_id,
         users_user_id=int(user_id)
@@ -375,105 +366,11 @@ def download_report(scan_id):
     if not scan:
         return jsonify({"msg": "Scan tidak ditemukan"}), 404
 
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    elements = []
-    styles = getSampleStyleSheet()
-
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor=colors.HexColor('#1e40af'),
-        spaceAfter=30,
-        alignment=1
-    )
-    elements.append(Paragraph("Deep-Scan Security Report", title_style))
-    elements.append(Spacer(1, 0.3 * inch))
-
-    info_data = [
-        ['Target URL:', scan.target_url],
-        ['Scan ID:', str(scan.scan_id)],
-        ['Scan Date:', scan.start_time.strftime("%d %b %Y, %H:%M:%S") if scan.start_time else 'N/A'],
-        ['Status:', scan.status],
-    ]
-
-    info_table = Table(info_data, colWidths=[2*inch, 4*inch])
-    info_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e5e7eb')),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.grey)
-    ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 0.5 * inch))
-
-    if scan.result:
-        elements.append(Paragraph("Vulnerability Summary", styles['Heading2']))
-        elements.append(Spacer(1, 0.2 * inch))
-
-        high_count = sum(1 for v in scan.result.vulnerabilities if v.severity.lower() == 'high')
-        medium_count = sum(1 for v in scan.result.vulnerabilities if v.severity.lower() == 'medium')
-        low_count = sum(1 for v in scan.result.vulnerabilities if v.severity.lower() == 'low')
-
-        summary_data = [
-            ['Total Vulnerabilities', str(scan.result.total_vulnerabilities)],
-            ['High Severity', str(high_count)],
-            ['Medium Severity', str(medium_count)],
-            ['Low Severity', str(low_count)]
-        ]
-
-        summary_table = Table(summary_data, colWidths=[3*inch, 3*inch])
-        summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 11),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
-        ]))
-        elements.append(summary_table)
-        elements.append(PageBreak())
-
-        if scan.result.vulnerabilities:
-            elements.append(Paragraph("Vulnerability Details", styles['Heading2']))
-            elements.append(Spacer(1, 0.2 * inch))
-
-            for vuln in scan.result.vulnerabilities:
-                vuln_data = [
-                    ['Name:', vuln.vuln_name],
-                    ['Severity:', vuln.severity.upper()],
-                    ['Category:', vuln.category],
-                    ['Description:', vuln.description or 'N/A'],
-                    ['Recommendation:', vuln.recommendation or 'N/A']
-                ]
-
-                vuln_table = Table(vuln_data, colWidths=[1.5*inch, 4.5*inch])
-                vuln_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f3f4f6')),
-                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 9),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP')
-                ]))
-                elements.append(vuln_table)
-                elements.append(Spacer(1, 0.3 * inch))
-
-    doc.build(elements)
-    buffer.seek(0)
-
-    filename = f"DeepScan_Report_{scan_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    buffer, filename = generate_pdf_report(scan)
 
     return send_file(
         buffer,
         as_attachment=True,
-        download_name=filename,
+        download_name=filename,  
         mimetype='application/pdf'
     )

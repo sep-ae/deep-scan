@@ -31,7 +31,6 @@ class Scan(db.Model):
     end_time = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(15), default='Pending')
     
-    # ✅ TAMBAHAN UNTUK PROGRESS TRACKING
     progress = db.Column(db.Integer, default=0)
     current_phase = db.Column(db.String(100), nullable=True)
     error_message = db.Column(db.Text, nullable=True)
@@ -59,8 +58,8 @@ class Vulnerability(db.Model):
     __tablename__ = 'vulnerabilities'
 
     vuln_id = db.Column(db.Integer, primary_key=True)
-    category = db.Column(db.String(45), nullable=False)
-    vuln_name = db.Column(db.String(45), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
+    vuln_name = db.Column(db.String(100), nullable=False)
     severity = db.Column(db.String(10), default='Low')
     description = db.Column(db.Text, nullable=True)
     recommendation = db.Column(db.Text, nullable=True)
@@ -85,7 +84,7 @@ class ReconData(db.Model):
     __tablename__ = 'recon_data'
 
     recon_id = db.Column(db.Integer, primary_key=True)
-    category = db.Column(db.String(45), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
     item = db.Column(db.String(255), nullable=False)
     details = db.Column(db.Text, nullable=True)
 

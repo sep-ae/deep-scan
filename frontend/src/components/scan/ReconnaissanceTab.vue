@@ -3,7 +3,10 @@ import { computed, ref } from 'vue'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Search, Server, Globe, Lock, Code, Shield, Network, ChevronDown, ChevronUp } from 'lucide-vue-next'
+import {
+  Search, Server, Globe, Lock, Code, Shield, Network,
+  ChevronDown, ChevronUp, ExternalLink, Wifi
+} from 'lucide-vue-next'
 
 const props = defineProps({
   reconData: {
@@ -17,6 +20,15 @@ const expandedCategories = ref({})
 const toggleCategory = (key) => {
   expandedCategories.value[key] = !expandedCategories.value[key]
 }
+
+const RECON_CATEGORIES = ['DNS', 'Subdomain', 'Port', 'Technology', 'HTTP Headers', 'CORS', 'Auth Protection']
+
+const HIDDEN_CATEGORIES = [
+  'XSS', 'SQL Injection', 'Command Injection', 'File Upload',
+  'Open Redirect', 'Directory Listing',
+  'XSS:Summary', 'SQL Injection:Summary', 'Command Injection:Summary',
+  'File Upload:Summary', 'Open Redirect:Summary', 'Directory Listing:Summary',
+]
 
 const parseDetails = (details) => {
   if (!details) return null
@@ -38,10 +50,17 @@ const parseDetails = (details) => {
 }
 
 const reconDataByCategory = computed(() => {
-  const grouped = { 'DNS': [], 'Port': [], 'Technology': [], 'Subdomain': [] }
+  const grouped = {}
+
+  RECON_CATEGORIES.forEach(cat => {
+    grouped[cat] = []
+  })
 
   props.reconData.forEach(recon => {
     const category = recon.category || 'Other'
+
+    if (HIDDEN_CATEGORIES.includes(category)) return
+
     if (!grouped[category]) grouped[category] = []
     grouped[category].push({ ...recon, parsedDetails: parseDetails(recon.details) })
   })
@@ -65,37 +84,78 @@ const subdomainsByCategory = computed(() => {
 const getCategoryIcon = (category) => {
   const icons = {
     'DNS': Globe, 'Subdomain': Server, 'Port': Lock,
-    'Technology': Code, 'Headers': Shield, 'SSL': Network
+    'Technology': Code, 'HTTP Headers': Shield, 'CORS': Network,
+    'Auth Protection': Wifi
   }
   return icons[category] || Search
 }
 
-const renderDNSData = (data) => {
-  if (!data) return '-'
+const formatDNSValue = (item) => {
+  const data = item.parsedDetails
+  if (!data) return item.details || '-'
+
   if (typeof data === 'string') return data
+
   if (data.total_queries !== undefined) return null
 
   if (Array.isArray(data)) {
-    return data.map(item => {
-      if (typeof item === 'object' && item.mail_server) return `${item.mail_server} (Priority: ${item.priority})`
-      if (typeof item === 'object' && item.mname) return `${item.mname} — Serial: ${item.serial}, Refresh: ${item.refresh}s`
-      return String(item)
-    }).join(', ')
+    if (data.length === 0) return null
+    return data.map(entry => {
+      if (typeof entry === 'string') return entry
+      if (entry.mail_server) return `${entry.mail_server} (Priority: ${entry.priority})`
+      if (entry.mname) return `${entry.mname} — Serial: ${entry.serial}`
+      if (entry.hostname) return entry.hostname
+      if (entry.name) return `${entry.name}: ${entry.data || ''}`
+      return JSON.stringify(entry)
+    })
   }
 
-  if (data.mname) return `${data.mname} — Serial: ${data.serial}, Refresh: ${data.refresh}s, Expire: ${data.expire}s`
+  if (data.mname) {
+    return [`${data.mname} — Serial: ${data.serial}, Refresh: ${data.refresh}s, Expire: ${data.expire}s`]
+  }
 
-  return JSON.stringify(data)
+  if (data.attempted !== undefined) return null
+  if (data.vulnerable !== undefined && !data.vulnerable) return null
+
+  if (typeof data === 'object') {
+    const entries = Object.entries(data).filter(([, v]) => {
+      if (v === null || v === undefined) return false
+      if (Array.isArray(v) && v.length === 0) return false
+      if (typeof v === 'boolean' && !v) return false
+      return true
+    })
+    if (entries.length === 0) return null
+    return entries.map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+  }
+
+  return [String(data)]
 }
 
-const renderDNSMetadata = (data) => {
-  if (!data || typeof data !== 'object' || data.total_queries === undefined) return null
-  return {
-    'Domain': data.domain,
-    'Total Queries': data.total_queries,
-    'Total Time': `${data.total_time}s`,
-    'Timestamp': new Date(data.timestamp * 1000).toLocaleString('id-ID')
+const getDNSMetadata = (items) => {
+  for (const item of items) {
+    const data = item.parsedDetails
+    if (data && typeof data === 'object' && data.total_queries !== undefined) {
+      return {
+        'Domain': data.domain,
+        'Total Queries': data.total_queries,
+        'Total Time': `${data.total_time}s`,
+        'Timestamp': new Date(data.timestamp * 1000).toLocaleString('id-ID')
+      }
+    }
   }
+  return null
+}
+
+const getDNSRecords = (items) => {
+  return items.filter(item => {
+    const data = item.parsedDetails
+    if (!data || typeof data !== 'object') return true
+    if (data.total_queries !== undefined) return false
+    if (data.attempted !== undefined) return false
+    if (data.vulnerable !== undefined && !data.vulnerable && !data.records?.length) return false
+    if (Array.isArray(data) && data.length === 0) return false
+    return true
+  })
 }
 
 const renderHeaderItem = (data) => {
@@ -139,24 +199,38 @@ const renderCORS = (data) => {
         <!-- DNS -->
         <div v-if="category === 'DNS'" class="space-y-3">
           <div
-            v-for="item in items"
+            v-for="item in getDNSRecords(items)"
             :key="item.recon_id"
             class="p-3 rounded-lg border border-neutral-200 bg-white"
           >
-            <template v-if="renderDNSMetadata(item.parsedDetails)">
-              <div class="font-semibold text-xs text-neutral-400 uppercase tracking-wide mb-2">Scan Metadata</div>
-              <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-                <template v-for="(val, key) in renderDNSMetadata(item.parsedDetails)" :key="key">
-                  <span class="font-medium text-neutral-600">{{ key }}</span>
-                  <span class="text-neutral-800">{{ val }}</span>
-                </template>
+            <div class="font-semibold text-sm text-neutral-900 mb-1">{{ item.item }}</div>
+            <template v-if="formatDNSValue(item)">
+              <template v-if="Array.isArray(formatDNSValue(item))">
+                <div
+                  v-for="(val, idx) in formatDNSValue(item)"
+                  :key="idx"
+                  class="text-sm text-neutral-600"
+                >
+                  {{ val }}
+                </div>
+              </template>
+              <div v-else class="text-sm text-neutral-600">
+                {{ formatDNSValue(item) }}
               </div>
             </template>
+          </div>
 
-            <template v-else>
-              <div class="font-semibold text-sm text-neutral-900 mb-1">{{ item.item }}</div>
-              <div class="text-sm text-neutral-600">{{ renderDNSData(item.parsedDetails) || item.details }}</div>
-            </template>
+          <div
+            v-if="getDNSMetadata(items)"
+            class="p-3 rounded-lg border border-neutral-100 bg-neutral-50"
+          >
+            <div class="font-semibold text-xs text-neutral-400 uppercase tracking-wide mb-2">Scan Metadata</div>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+              <template v-for="(val, key) in getDNSMetadata(items)" :key="key">
+                <span class="font-medium text-neutral-600">{{ key }}</span>
+                <span class="text-neutral-800">{{ val }}</span>
+              </template>
+            </div>
           </div>
         </div>
 
@@ -175,7 +249,7 @@ const renderCORS = (data) => {
                   <div v-if="item.parsedDetails.banner">Banner: {{ item.parsedDetails.banner }}</div>
                 </div>
               </div>
-              <Badge variant="outline" class="text-xs">Open</Badge>
+              <Badge variant="outline" class="text-xs bg-green-50 text-green-700 border-green-200">Open</Badge>
             </div>
           </div>
         </div>
@@ -187,7 +261,9 @@ const renderCORS = (data) => {
             :key="item.recon_id"
             class="p-3 rounded-lg border border-neutral-200 bg-white"
           >
-            <div class="font-semibold text-sm text-neutral-900 mb-2">{{ item.item }}</div>
+            <div class="font-semibold text-sm text-neutral-900 capitalize mb-2">
+              {{ item.item.replace(/_/g, ' ') }}
+            </div>
             <div class="flex flex-wrap gap-2">
               <template v-if="Array.isArray(item.parsedDetails)">
                 <Badge v-for="(tech, idx) in item.parsedDetails" :key="idx" variant="secondary">
@@ -195,7 +271,7 @@ const renderCORS = (data) => {
                 </Badge>
               </template>
               <template v-else>
-                <span class="text-sm text-neutral-600">{{ item.parsedDetails || item.details }}</span>
+                <Badge variant="secondary">{{ item.parsedDetails || item.details }}</Badge>
               </template>
             </div>
           </div>
@@ -256,8 +332,8 @@ const renderCORS = (data) => {
           </div>
         </div>
 
-        <!-- Headers -->
-        <div v-else-if="category === 'Headers'" class="space-y-3">
+        <!-- HTTP Headers -->
+        <div v-else-if="category === 'HTTP Headers'" class="space-y-3">
           <div
             v-for="item in items"
             :key="item.recon_id"
@@ -276,7 +352,7 @@ const renderCORS = (data) => {
               </Badge>
             </div>
             <div class="text-xs text-neutral-500">{{ renderHeaderItem(item.parsedDetails).description }}</div>
-            <div v-if="renderHeaderItem(item.parsedDetails).value" class="text-xs font-mono bg-neutral-50 rounded px-2 py-1 mt-1 text-neutral-700">
+            <div v-if="renderHeaderItem(item.parsedDetails).value" class="text-xs font-mono bg-neutral-50 rounded px-2 py-1 mt-1 text-neutral-700 break-all">
               {{ renderHeaderItem(item.parsedDetails).value }}
             </div>
           </div>
@@ -299,6 +375,21 @@ const renderCORS = (data) => {
             >
               ⚠️ Wildcard origin (*) — semua domain diizinkan akses
             </div>
+          </div>
+        </div>
+
+        <!-- Auth Protection -->
+        <div v-else-if="category === 'Auth Protection'" class="space-y-3">
+          <div
+            v-for="item in items"
+            :key="item.recon_id"
+            class="p-3 rounded-lg border border-neutral-200 bg-white"
+          >
+            <div class="flex items-center gap-2 mb-1">
+              <Shield class="h-4 w-4 text-neutral-600" />
+              <div class="font-semibold text-sm text-neutral-900">{{ item.item }}</div>
+            </div>
+            <div class="text-sm text-neutral-600">{{ item.details }}</div>
           </div>
         </div>
 

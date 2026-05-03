@@ -22,6 +22,9 @@ WEAK_PASSWORDS = [
 ]
 
 DEFAULT_CREDENTIALS = [
+    ('superadmin@gmail.com', 'djakarta321'),
+    ('septito2k21@gmail.com', 'DeepScan@2026!'),
+    ('septito2k21@gmail.com', '12345678'),
     ('admin', 'admin'),
     ('admin', 'password'),
     ('admin', '123456'),
@@ -95,11 +98,9 @@ class LoginSecurityChecker:
         self._login_endpoint = None
         self._login_method   = None
         self._field_names    = {'user': 'email', 'pass': 'password'}
-        self._active_base    = self.base_url  # base_url aktif (bisa jadi subdomain)
+        self._active_base    = self.base_url 
 
-    # ══════════════════════════════════════════
-    # PUBLIC
-    # ══════════════════════════════════════════
+
     def run(self) -> Dict[str, Any]:
         results = {
             'login_endpoint':           None,
@@ -199,9 +200,7 @@ class LoginSecurityChecker:
 
         return results
 
-    # ══════════════════════════════════════════
-    # PRIVATE — Subdomain Discovery
-    # ══════════════════════════════════════════
+ 
     def _discover_admin_subdomain(self) -> Optional[str]:
         """
         Detect admin panel di subdomain berbeda.

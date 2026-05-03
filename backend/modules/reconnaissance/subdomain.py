@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Set, Optional
 from collections import defaultdict
 
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -21,7 +22,12 @@ class SubdomainFinder:
         self.wildcard_ips: Set[str] = set()
         self.wildcard_content_hash: Optional[str] = None
         self.passive_discovered: Set[str] = set()
-        self._detect_wildcard_robust()
+
+        try:
+            self._detect_wildcard_robust()
+        except Exception:
+            print("  [!] Wildcard detection failed, continuing without it")
+            self.wildcard_ips = set()
 
         self.common_subdomains = [
             'www', 'mail', 'ftp', 'api', 'dev', 'staging', 'test',
@@ -89,6 +95,7 @@ class SubdomainFinder:
                 return cat_name
         return 'General'
 
+
     def _check_risk_marking(self, subdomain: str) -> Optional[str]:
         prefix = subdomain.replace(f".{self.domain}", "")
         if any(k in prefix for k in self.gambling_subdomains):
@@ -131,6 +138,7 @@ class SubdomainFinder:
         else:
             print("  [+] No wildcard detected")
 
+
     def _get_content_hash(self, subdomain: str) -> Optional[str]:
         try:
             resp = requests.get(
@@ -141,10 +149,12 @@ class SubdomainFinder:
         except Exception:
             return None
 
+
     def _is_likely_wildcard(self, subdomain: str, ips: List[str]) -> bool:
         if subdomain in self.passive_discovered or not self.wildcard_ips:
             return False
         return any(ip in self.wildcard_ips for ip in ips)
+
 
     def _verify_with_http(self, subdomain: str) -> bool:
         if not self.wildcard_content_hash:
@@ -169,10 +179,15 @@ class SubdomainFinder:
                     pass
         return subdomains
 
+
     def _query_crtsh(self) -> Set[str]:
         subdomains: Set[str] = set()
         try:
-            resp = requests.get(f"https://crt.sh/?q=%.{self.domain}&output=json", timeout=15, verify=False)
+            resp = requests.get(
+                f"https://crt.sh/?q=%.{self.domain}&output=json",
+                timeout=8,  # turun dari 15s → 8s
+                verify=False
+            )
             if resp.status_code == 200:
                 for entry in resp.json():
                     for line in entry.get('name_value', '').split('\n'):
@@ -186,6 +201,7 @@ class SubdomainFinder:
         except requests.exceptions.RequestException as e:
             print(f"    [crt.sh] Error: {type(e).__name__} (skipped)")
         return subdomains
+
 
     def _query_hackertarget(self) -> Set[str]:
         subdomains: Set[str] = set()
@@ -205,13 +221,19 @@ class SubdomainFinder:
             print(f"    [HackerTarget] Error: {type(e).__name__} (skipped)")
         return subdomains
 
+
     def _query_wayback(self) -> Set[str]:
         subdomains: Set[str] = set()
         try:
-            url = f"http://web.archive.org/cdx/search/cdx?url=*.{self.domain}/*&output=json&collapse=urlkey"
-            resp = requests.get(url, timeout=10)
+            url = f"http://web.archive.org/cdx/search/cdx?url=*.{self.domain}/*&output=json&collapse=urlkey&limit=500"
+            resp = requests.get(url, timeout=8, stream=True)  # stream=True + limit query
             if resp.status_code == 200:
-                for entry in resp.json()[1:]:
+                content = b""
+                for chunk in resp.iter_content(8192):
+                    content += chunk
+                    if len(content) > 500_000:  # stop setelah 500KB
+                        break
+                for entry in __import__('json').loads(content)[1:]:
                     match = re.search(
                         r'([a-z0-9\-]+\.)+' + re.escape(self.domain),
                         entry[2], re.IGNORECASE
@@ -226,6 +248,8 @@ class SubdomainFinder:
             print("    [Wayback] Timeout (skipped)")
         except requests.exceptions.RequestException as e:
             print(f"    [Wayback] Error: {type(e).__name__} (skipped)")
+        except Exception:
+            print("    [Wayback] Parse error (skipped)")
         return subdomains
 
 
@@ -244,6 +268,7 @@ class SubdomainFinder:
                 except Exception:
                     pass
         return found
+
 
     def _resolve_candidate(self, sub: str) -> Optional[str]:
         full_domain = f"{sub}.{self.domain}"
@@ -273,6 +298,7 @@ class SubdomainFinder:
                     pass
         return validated
 
+
     def _resolve_final_smart(self, subdomain: str, http_verify: bool) -> Optional[Dict]:
         try:
             answers = self.resolver.resolve(subdomain, 'A')
@@ -289,5 +315,3 @@ class SubdomainFinder:
             return {'subdomain': subdomain, 'ip': ips[0], 'all_ips': ips}
         except Exception:
             return None
-
-

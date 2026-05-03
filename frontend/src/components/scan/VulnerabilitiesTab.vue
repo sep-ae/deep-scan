@@ -184,6 +184,37 @@ const getSeverityColor  = (severity) => SEVERITY_CONFIG[normalizeSeverity(severi
               </div>
             </div>
 
+            <!-- PoC (Proof of Concept) Section -->
+            <div v-if="vuln.poc">
+              <h4 class="font-semibold text-sm text-neutral-900 mb-2 flex items-center gap-2">
+                <AlertTriangle class="h-4 w-4 text-orange-600" />
+                Proof of Concept (PoC)
+              </h4>
+              <div class="bg-orange-50 rounded-lg border border-orange-200 p-4 space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold text-orange-700 uppercase tracking-wide">HTTP Method</span>
+                  <span class="px-2 py-0.5 text-xs font-bold rounded"
+                    :class="{
+                      'bg-blue-100 text-blue-800': vuln.poc.http_method === 'GET',
+                      'bg-green-100 text-green-800': vuln.poc.http_method === 'POST',
+                      'bg-yellow-100 text-yellow-800': !['GET','POST'].includes(vuln.poc.http_method),
+                    }">
+                    {{ vuln.poc.http_method }}
+                  </span>
+                </div>
+
+                <div>
+                  <span class="text-xs font-semibold text-orange-700 uppercase tracking-wide">Payload</span>
+                  <pre class="mt-1 text-xs font-mono bg-neutral-900 text-green-400 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">{{ vuln.poc.payload }}</pre>
+                </div>
+
+                <div>
+                  <span class="text-xs font-semibold text-orange-700 uppercase tracking-wide">Response</span>
+                  <pre class="mt-1 text-xs font-mono bg-neutral-900 text-orange-300 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">{{ vuln.poc.response }}</pre>
+                </div>
+              </div>
+            </div>
+
           </div>
         </AccordionContent>
       </Card>

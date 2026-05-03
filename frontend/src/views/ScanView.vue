@@ -30,7 +30,7 @@ const currentPhase = ref('')
 
 let pollTimer = null
 let pollInterval = 8000
-const MIN_INTERVAL = 8000
+const MIN_INTERVAL = 3000
 const MAX_INTERVAL = 15000
 
 const storedUser = localStorage.getItem('user')
