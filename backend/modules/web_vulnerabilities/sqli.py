@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient
 from helpers.browser import crawl_spa
+from helpers.scope import is_in_scope
 from helpers.parsers import (
     is_spa_html, spa_confidence,
     extract_forms, extract_paths_from_js,
@@ -262,11 +263,13 @@ class SQLInjectionChecker:
         timeout: float = 8.0,
         extra_paths: Optional[List[str]] = None,
         cookies: Optional[Dict] = None,
+        scope_mode: str = 'wildcard',
     ):
         self.base_url            = url.rstrip('/')
         self.timeout             = int(timeout)
         self.extra_paths         = extra_paths or []
         self.cookies             = cookies or {}
+        self.scope_mode          = scope_mode
         self._found_urls: set    = set()
         self._is_spa             = False
         self._waf_detected       = False
@@ -407,7 +410,7 @@ class SQLInjectionChecker:
             js_text
         ):
             base = api_url.rstrip('/')
-            if base not in self._api_bases:
+            if base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
                 self._api_bases.append(base)
 
         for base in re.findall(

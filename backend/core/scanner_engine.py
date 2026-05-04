@@ -71,6 +71,7 @@ class ScannerEngine:
             web_vuln_results = run_web_vulnerabilities(
                 self.target_url,
                 cookies=getattr(self.scan, 'cookies', None),
+                scope_mode=getattr(self.scan, 'scope_mode', 'wildcard'),
             )
 
             self.update_progress(80, "Saving results to database...")

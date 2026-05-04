@@ -31,7 +31,7 @@ def run_port_scanner(domain: str, ip_address: str):
         return []
 
     try:
-        return PortScanner(ip_address).run()
+        return PortScanner(ip_address, domain=domain).run()
     except Exception as e:
         print(f"[!] Port scanner error: {e}")
         return []
@@ -64,10 +64,10 @@ def run_auth_protection(target_url: str):
         return {}
 
 
-def run_web_vulnerabilities(target_url: str, cookies: dict = None) -> dict:
+def run_web_vulnerabilities(target_url: str, cookies: dict = None, scope_mode: str = 'wildcard') -> dict:
     try:
         print("  [*] Starting web vulnerability checks...")
-        raw = run_web_vulnerability_checks(target_url)
+        raw = run_web_vulnerability_checks(target_url, scope_mode=scope_mode)
         return _normalize_web_vuln_results(raw)
     except Exception as e:
         print(f"[!] Web vulnerability check error: {e}")

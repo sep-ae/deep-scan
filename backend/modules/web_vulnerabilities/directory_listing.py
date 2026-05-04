@@ -7,6 +7,7 @@ from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient
+from helpers.scope import is_in_scope
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -179,6 +180,7 @@ class DirectoryListingChecker:
         extra_paths: Optional[List[str]] = None,
         max_depth: int = 2,       
         enumerate_contents: bool = True,
+        scope_mode: str = 'wildcard',
     ):
         self.base_url            = url.rstrip('/')
         self.timeout             = int(timeout)
@@ -186,6 +188,7 @@ class DirectoryListingChecker:
         self.extra_paths         = extra_paths or []
         self.max_depth           = max_depth
         self.enumerate_contents  = enumerate_contents
+        self.scope_mode          = scope_mode
         self._lock               = threading.Lock()
         self._all_bases: List[str] = []
         self._probed_urls: Set[str] = set()   
@@ -242,7 +245,7 @@ class DirectoryListingChecker:
                 if found_root != main_root:
                     continue
                 base = f"{p.scheme}://{p.netloc}"
-                if base not in bases:
+                if base not in bases and is_in_scope(base, self.base_url, self.scope_mode):
                     bases.append(base)
                     _info(f"Subdomain ditemukan: {base}")
 

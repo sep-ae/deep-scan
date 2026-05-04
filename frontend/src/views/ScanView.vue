@@ -15,7 +15,8 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 
 import {
   Scan, Loader2, CheckCircle2, Globe, Shield,
-  CircleUser, Menu, Package2, Home, History
+  CircleUser, Menu, Package2, Home, History,
+  Crosshair, Globe2
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -23,6 +24,7 @@ const route = useRoute()
 const username = ref('Pengguna')
 
 const targetUrl = ref('')
+const scopeMode = ref('wildcard')
 const isScanning = ref(false)
 const scanProgress = ref(0)
 const currentScanId = ref(null)
@@ -55,7 +57,10 @@ const handleStartScan = async () => {
     currentPhase.value = 'Starting scan...'
     pollInterval = MIN_INTERVAL
 
-    const response = await api.post('/scan/start', { target_url: targetUrl.value })
+    const response = await api.post('/scan/start', {
+      target_url: targetUrl.value,
+      scope_mode: scopeMode.value,
+    })
     currentScanId.value = response.data.scan_id
 
     toast('Scan Dimulai', { description: `Memindai ${response.data.target}...` })
@@ -259,6 +264,54 @@ const isActive = (path) => route.path === path
                 @keyup.enter="handleStartScan"
               />
               <p class="text-xs text-neutral-500">Contoh: https://example.com atau example.com</p>
+            </div>
+
+            <!-- Scope Mode -->
+            <div class="space-y-2">
+              <Label class="flex items-center gap-2">
+                <Crosshair class="h-4 w-4" />
+                Scope Domain
+              </Label>
+              <div class="grid grid-cols-2 gap-3">
+                <label
+                  :class="[
+                    'flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all',
+                    scopeMode === 'strict'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-neutral-200 hover:border-neutral-300'
+                  ]"
+                >
+                  <input
+                    type="radio"
+                    v-model="scopeMode"
+                    value="strict"
+                    class="mt-1 accent-blue-600"
+                  />
+                  <div>
+                    <p class="text-sm font-medium text-neutral-900">Domain Utama</p>
+                    <p class="text-xs text-neutral-500">Hanya scan domain yang diinput</p>
+                  </div>
+                </label>
+                <label
+                  :class="[
+                    'flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all',
+                    scopeMode === 'wildcard'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-neutral-200 hover:border-neutral-300'
+                  ]"
+                >
+                  <input
+                    type="radio"
+                    v-model="scopeMode"
+                    value="wildcard"
+                    class="mt-1 accent-blue-600"
+                  />
+                  <div>
+                    <p class="text-sm font-medium text-neutral-900">Termasuk Subdomain</p>
+                    <p class="text-xs text-neutral-500">Scan semua subdomain terkait</p>
+                  </div>
+                </label>
+              </div>
             </div>
             <Button
               @click="handleStartScan"

@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from urllib.parse import urljoin, urlparse
 
 from helpers.http_client import HttpClient
+from helpers.scope import is_in_scope
 from helpers.parsers import (
     extract_paths_from_js,
     extract_all_js_paths,
@@ -178,10 +179,12 @@ def _classify_severity(ext: str, accessible: bool) -> str:
 
 class FileUploadChecker:
     def __init__(self, url: str, timeout: float = 10.0,
-                 cookies: Optional[Dict] = None):
+                 cookies: Optional[Dict] = None,
+                 scope_mode: str = 'wildcard'):
         self.base_url        = url.rstrip('/')
         self.timeout         = int(timeout)
         self.cookies         = cookies or {}
+        self.scope_mode      = scope_mode
         self._uid            = uuid.uuid4().hex[:8]
         self._is_spa         = False
         self._pw_used        = False
@@ -257,7 +260,7 @@ class FileUploadChecker:
                 for call in pw.get("api_calls", []):
                     call_url = call.get("url", "")
                     base     = self._extract_base(call_url)
-                    if base and base not in self._api_bases:
+                    if base and base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
                         self._api_bases.append(base)
                     p = urlparse(call_url)
                     if p.path and ('upload' in p.path.lower() or 'file' in p.path.lower()):
@@ -315,7 +318,7 @@ class FileUploadChecker:
             url = m.group(1)
             if 'api' in url.lower() or 'upload' in url.lower():
                 base = self._extract_base(url)
-                if base and base not in self._api_bases:
+                if base and base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
                     self._api_bases.append(base)
 
         for m in re.finditer(

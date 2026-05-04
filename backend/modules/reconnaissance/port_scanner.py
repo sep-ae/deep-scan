@@ -85,10 +85,12 @@ class PortScanner:
     def __init__(
         self,
         target_ip: str,
+        domain: Optional[str] = None,
         ports: Optional[Dict[int, str]] = None,
         risk_marking: Optional[Dict[int, str]] = None,
     ) -> None:
         self.target_ip = target_ip
+        self.domain = domain
         self.ports = ports or COMMON_PORTS
         self.risk_marking = risk_marking or RISK_MARKING
 
@@ -156,7 +158,9 @@ class PortScanner:
     def _grab_http_banner(self, port: int) -> str:
         """Kirim HTTP HEAD request untuk mendapatkan info server."""
         protocol = "https" if port in HTTPS_PORTS else "http"
-        url = f"{protocol}://{self.target_ip}:{port}"
+        # Untuk HTTPS, gunakan domain (SNI) agar Cloudflare tidak reject
+        host = self.domain if (self.domain and port in HTTPS_PORTS) else self.target_ip
+        url = f"{protocol}://{host}:{port}"
         try:
             resp = requests.head(url, timeout=3, verify=False, allow_redirects=True)
             server = resp.headers.get("Server", "Web Server")

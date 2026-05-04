@@ -8,6 +8,7 @@ from urllib.parse import urlparse, urljoin, quote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient
+from helpers.scope import is_in_scope
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -79,6 +80,7 @@ class OpenRedirectChecker:
         stop_on_first: bool = False,
         max_workers: int = 10,
         max_paths: int = 25,
+        scope_mode: str = 'wildcard',
     ):
         self.base_url = url.rstrip('/')
         self.timeout = int(timeout)
@@ -87,6 +89,7 @@ class OpenRedirectChecker:
         self.stop_on_first = stop_on_first
         self.max_workers = max_workers
         self.max_paths = max_paths
+        self.scope_mode = scope_mode
         self._lock = threading.Lock()
         self._vuln_found = threading.Event()
         self._found_keys: set = set()
@@ -146,7 +149,7 @@ class OpenRedirectChecker:
                 if self._get_root_domain(p.netloc) != main_root:
                     continue
                 base = f"{p.scheme}://{p.netloc}"
-                if base not in bases:
+                if base not in bases and is_in_scope(base, self.base_url, self.scope_mode):
                     bases.append(base)
                     _info(f"Subdomain ditemukan: {base}")
 

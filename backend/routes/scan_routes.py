@@ -78,6 +78,10 @@ def start_scan():
     user_id = get_jwt_identity()
     data = request.json
     target_url = data.get('target_url', '').strip()
+    scope_mode = data.get('scope_mode', 'wildcard').strip()
+
+    if scope_mode not in ('strict', 'wildcard'):
+        scope_mode = 'wildcard'
 
     if not target_url:
         return jsonify({"msg": "URL Target wajib diisi"}), 400
@@ -92,7 +96,8 @@ def start_scan():
         status='pending',
         start_time=get_local_time(),
         progress=0,
-        current_phase='Waiting to start...'
+        current_phase='Waiting to start...',
+        scope_mode=scope_mode,
     )
 
     try:

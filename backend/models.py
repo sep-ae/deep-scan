@@ -34,6 +34,7 @@ class Scan(db.Model):
     progress = db.Column(db.Integer, default=0)
     current_phase = db.Column(db.String(100), nullable=True)
     error_message = db.Column(db.Text, nullable=True)
+    scope_mode = db.Column(db.String(20), default='wildcard')
     
     users_user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
 

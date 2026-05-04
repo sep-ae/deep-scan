@@ -146,11 +146,13 @@ class XSSChecker:
         timeout: float = 8.0,
         cookies: Optional[Dict] = None,
         extra_paths: Optional[List[str]] = None,
+        scope_mode: str = 'wildcard',
     ):
         self.base_url    = url.rstrip('/')
         self.timeout     = int(timeout)
         self.cookies     = cookies or {}
         self.extra_paths = extra_paths or []
+        self.scope_mode  = scope_mode
         self._lock       = threading.Lock()
         self._vuln_found = threading.Event()
         self._found_keys: set = set()
