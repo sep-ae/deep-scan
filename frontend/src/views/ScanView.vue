@@ -12,12 +12,14 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 import {
   Scan, Loader2, CheckCircle2, Globe, Shield,
   CircleUser, Menu, Package2, Home, History,
-  Crosshair, Globe2
+  Crosshair, Globe2, XCircle, AlertTriangle
 } from 'lucide-vue-next'
+import { onMounted } from 'vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -26,9 +28,12 @@ const username = ref('Pengguna')
 const targetUrl = ref('')
 const scopeMode = ref('wildcard')
 const isScanning = ref(false)
+const isCheckingActive = ref(true)
 const scanProgress = ref(0)
 const currentScanId = ref(null)
 const currentPhase = ref('')
+const showCancelDialog = ref(false)
+const isCancelling = ref(false)
 
 let pollTimer = null
 let pollInterval = 8000
@@ -44,6 +49,29 @@ if (storedUser) {
     console.error('Error parsing user data:', e)
   }
 }
+
+const checkActiveScan = async () => {
+  try {
+    const response = await api.get('/scan/active')
+    if (response.data.has_active_scan) {
+      isScanning.value = true
+      currentScanId.value = response.data.scan_id
+      targetUrl.value = response.data.target
+      scanProgress.value = response.data.progress
+      currentPhase.value = 'Melanjutkan progress...'
+      pollInterval = MIN_INTERVAL
+      schedulePoll()
+    }
+  } catch (error) {
+    console.error('Gagal mengecek scan aktif:', error)
+  } finally {
+    isCheckingActive.value = false
+  }
+}
+
+onMounted(() => {
+  checkActiveScan()
+})
 
 const handleStartScan = async () => {
   if (!targetUrl.value.trim()) {
@@ -89,14 +117,26 @@ const executePoll = async () => {
 
     if (data.status === 'completed') {
       stopPolling()
+      scanProgress.value = 100
+      currentPhase.value = 'Scan selesai! Mengalihkan ke hasil...'
       toast('Scan Selesai', { description: 'Pemindaian berhasil diselesaikan!' })
-      setTimeout(() => router.push(`/history/${currentScanId.value}`), 1500)
+      setTimeout(() => {
+        isScanning.value = false
+        router.push(`/history/${currentScanId.value}`)
+      }, 1500)
       return
     }
 
     if (data.status === 'failed') {
       stopPolling()
       toast('Scan Gagal', { description: data.error_message || 'Terjadi kesalahan saat scanning' })
+      isScanning.value = false
+      scanProgress.value = 0
+      return
+    }
+
+    if (data.status === 'cancelled') {
+      stopPolling()
       isScanning.value = false
       scanProgress.value = 0
       return
@@ -127,7 +167,26 @@ const stopPolling = () => {
     clearTimeout(pollTimer)
     pollTimer = null
   }
-  isScanning.value = false
+}
+
+const handleCancelScan = async () => {
+  if (!currentScanId.value) return
+  isCancelling.value = true
+
+  try {
+    await api.post(`/scan/cancel/${currentScanId.value}`)
+    stopPolling()
+    showCancelDialog.value = false
+    toast('Scan Dibatalkan', { description: 'Pemindaian dihentikan paksa oleh pengguna.' })
+    isScanning.value = false
+    scanProgress.value = 0
+    currentPhase.value = ''
+  } catch (error) {
+    const msg = error.response?.data?.msg || 'Gagal membatalkan scan'
+    toast('Error', { description: msg })
+  } finally {
+    isCancelling.value = false
+  }
 }
 
 const goToDashboard = () => router.push('/dashboard')
@@ -243,7 +302,13 @@ const isActive = (path) => route.path === path
 
       <div class="max-w-2xl mx-auto space-y-6">
 
-        <Card class="border-none shadow-lg" v-if="!isScanning">
+        <!-- Loading saat cek active scan -->
+        <div v-if="isCheckingActive" class="flex flex-col items-center justify-center py-16">
+          <Loader2 class="h-8 w-8 animate-spin text-blue-600 mb-3" />
+          <p class="text-sm text-neutral-500">Memuat...</p>
+        </div>
+
+        <Card class="border-none shadow-lg" v-else-if="!isScanning">
           <CardHeader>
             <CardTitle class="text-lg">Mulai Pemindaian Baru</CardTitle>
             <CardDescription>Masukkan URL website yang ingin dipindai</CardDescription>
@@ -373,6 +438,15 @@ const isActive = (path) => route.path === path
                 Proses pemindaian dapat memakan waktu beberapa menit. Harap menunggu...
               </AlertDescription>
             </Alert>
+            
+            <Button
+              @click="showCancelDialog = true"
+              variant="destructive"
+              class="w-full font-semibold shadow-sm"
+            >
+              <XCircle class="h-4 w-4 mr-2" />
+              Batalkan Pemindaian
+            </Button>
           </CardContent>
         </Card>
 
@@ -399,4 +473,50 @@ const isActive = (path) => route.path === path
     </main>
 
   </div>
+
+    <!-- Cancel Confirmation Dialog -->
+    <Dialog :open="showCancelDialog" @update:open="showCancelDialog = $event">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <div class="flex items-center gap-3 mb-2">
+            <div class="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
+              <AlertTriangle class="h-6 w-6 text-red-600" />
+            </div>
+            <div>
+              <DialogTitle class="text-lg font-bold text-neutral-900">Batalkan Pemindaian?</DialogTitle>
+              <DialogDescription class="text-sm text-neutral-500 mt-1">
+                Tindakan ini tidak dapat dibatalkan
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 my-2">
+          <p class="text-sm text-red-800">
+            Pemindaian yang sedang berjalan akan dihentikan secara paksa.
+            Hasil yang sudah terdeteksi <strong>tidak akan disimpan</strong> dan Anda
+            harus memulai ulang dari awal.
+          </p>
+        </div>
+        <DialogFooter class="flex gap-3 sm:justify-end mt-4">
+          <Button
+            variant="outline"
+            @click="showCancelDialog = false"
+            :disabled="isCancelling"
+          >
+            Kembali
+          </Button>
+          <Button
+            variant="destructive"
+            @click="handleCancelScan"
+            :disabled="isCancelling"
+            class="font-semibold"
+          >
+            <Loader2 v-if="isCancelling" class="h-4 w-4 mr-2 animate-spin" />
+            <XCircle v-else class="h-4 w-4 mr-2" />
+            {{ isCancelling ? 'Membatalkan...' : 'Ya, Batalkan' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
 </template>

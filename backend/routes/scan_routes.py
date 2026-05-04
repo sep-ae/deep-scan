@@ -20,6 +20,13 @@ from extensions import limiter
 scan_bp = Blueprint('scan', __name__, url_prefix='/api/scan')
 
 
+@scan_bp.before_request
+def handle_preflight():
+    """Otomatis jawab 200 untuk semua CORS preflight (OPTIONS) agar tidak diblokir JWT."""
+    if request.method == 'OPTIONS':
+        return '', 200
+
+
 def is_valid_url(url):
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
@@ -90,6 +97,18 @@ def start_scan():
     if not is_valid:
         return jsonify({"msg": "Format URL tidak valid"}), 400
 
+    # Cek apakah user masih punya scan yang berjalan (Batasan 1 active scan per user)
+    active_scan = Scan.query.filter(
+        Scan.users_user_id == int(user_id),
+        Scan.status.in_(['pending', 'running'])
+    ).first()
+
+    if active_scan:
+        return jsonify({
+            "msg": "Harap tunggu pemindaian sebelumnya selesai atau batalkan terlebih dahulu.",
+            "active_scan_id": active_scan.scan_id
+        }), 409
+
     new_scan = Scan(
         target_url=normalized_url,
         users_user_id=int(user_id),
@@ -128,6 +147,52 @@ def start_scan():
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": "Gagal memulai scan", "error": str(e)}), 500
+
+
+@scan_bp.route('/active', methods=['GET'])
+@jwt_required()
+def get_active_scan():
+    """Mengecek apakah user memiliki scan yang sedang berjalan."""
+    user_id = get_jwt_identity()
+    active_scan = Scan.query.filter(
+        Scan.users_user_id == int(user_id),
+        Scan.status.in_(['pending', 'running'])
+    ).first()
+
+    if active_scan:
+        return jsonify({
+            "has_active_scan": True,
+            "scan_id": active_scan.scan_id,
+            "target": active_scan.target_url,
+            "progress": active_scan.progress,
+            "status": active_scan.status
+        }), 200
+    
+    return jsonify({"has_active_scan": False}), 200
+
+
+@scan_bp.route('/cancel/<int:scan_id>', methods=['POST', 'OPTIONS'])
+@jwt_required()
+def cancel_scan(scan_id):
+    """Membatalkan paksa scan yang sedang berjalan."""
+    user_id = get_jwt_identity()
+    scan = Scan.query.filter_by(scan_id=scan_id, users_user_id=int(user_id)).first()
+
+    if not scan:
+        return jsonify({"msg": "Scan tidak ditemukan"}), 404
+
+    if scan.status in ['completed', 'failed', 'cancelled']:
+        return jsonify({"msg": f"Scan sudah dalam status {scan.status}"}), 400
+
+    try:
+        scan.status = 'cancelled'
+        scan.end_time = get_local_time()
+        scan.error_message = "Dibatalkan oleh pengguna"
+        db.session.commit()
+        return jsonify({"msg": "Scan berhasil dibatalkan"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": "Gagal membatalkan scan", "error": str(e)}), 500
 
 
 @scan_bp.route('/status/<int:scan_id>', methods=['GET'])

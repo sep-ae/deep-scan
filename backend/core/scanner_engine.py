@@ -24,6 +24,7 @@ class ScannerEngine:
         self.ip_address = None
 
     def update_progress(self, progress: int, phase: str):
+        self._check_cancelled()
         try:
             self.scan.progress      = progress
             self.scan.current_phase = phase
@@ -32,6 +33,16 @@ class ScannerEngine:
         except Exception as e:
             print(f"[!] Error updating progress: {e}")
             db.session.rollback()
+
+    def _check_cancelled(self):
+        """Mengecek database langsung untuk memastikan scan belum dibatalkan oleh user."""
+        try:
+            db.session.refresh(self.scan)
+            if self.scan.status == 'cancelled':
+                raise Exception("SCAN_CANCELLED_BY_USER")
+        except Exception as e:
+            if str(e) == "SCAN_CANCELLED_BY_USER":
+                raise e
 
     def run(self) -> bool:
         try:
@@ -106,13 +117,20 @@ class ScannerEngine:
 
             self.scan.status   = 'completed'
             self.scan.end_time = datetime.now()
-            self.update_progress(100, "Scan completed")
+            self.scan.progress      = 100
+            self.scan.current_phase = "Scan completed"
             db.session.commit()
+            print(f"[Progress] 100% - Scan completed")
 
             print(f"[+] Scan completed. Total vulns: {scan_result.total_vulnerabilities}")
             return True
 
         except Exception as e:
+            db.session.rollback()
+            if str(e) == "SCAN_CANCELLED_BY_USER":
+                print(f"[-] Scan {self.scan_id} dihentikan paksa oleh pengguna.")
+                return False
+                
             print(f"[!] Error during scan: {e}")
             if self.scan:
                 self.scan.status        = 'failed'
