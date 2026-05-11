@@ -6,6 +6,8 @@ from typing import Dict, Any, Optional, List, Tuple
 from urllib.parse import urljoin, urlparse
 
 from helpers.http_client import HttpClient
+from helpers.waf_checker import WAFChecker
+from helpers.spa_crawler import SPACrawler
 from helpers.scope import is_in_scope
 from helpers.parsers import (
     extract_paths_from_js,
@@ -13,7 +15,10 @@ from helpers.parsers import (
     normalize_url,
     spa_confidence,
 )
-from helpers.browser import crawl_spa
+try:
+    from helpers.browser import crawl_spa
+except ImportError:
+    crawl_spa = None
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -188,6 +193,8 @@ class FileUploadChecker:
         self._uid            = uuid.uuid4().hex[:8]
         self._is_spa         = False
         self._pw_used        = False
+        self._waf_detected   = False
+        self._waf_info: Dict = {}
         self._api_bases: List[str]   = [self.base_url]
         self._extra_paths: List[str] = []
         self._vuln_found     = threading.Event()
@@ -222,7 +229,7 @@ class FileUploadChecker:
             return True
         if r.status_code == 403:
             return any(k in r.text.lower() for k in CF_BLOCK_BODY)
-        return False
+        return WAFChecker.is_waf_block(r)
 
     def _extract_base(self, url: str) -> Optional[str]:
         try:
@@ -560,11 +567,22 @@ class FileUploadChecker:
             'summary':           {},        # ← tambah
             'spa_detected':      False,
             'playwright_used':   False,
+            'waf_detected':      False,
+            'waf_info':          {},
         }
 
         try:
-            pw_status = "tersedia" if PLAYWRIGHT_AVAILABLE else "tidak tersedia"
-            _info(f"Playwright: {pw_status}")
+            # ── WAF Detection ─────────────────────────────────────────────
+            waf = WAFChecker(self.base_url, self._client)
+            self._waf_detected      = waf.detect()
+            self._waf_info          = waf.get_info()
+            results['waf_detected'] = self._waf_detected
+            results['waf_info']     = self._waf_info
+
+            waf_name   = self._waf_info.get('waf_name', '?')
+            waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
+            pw_status  = "tersedia" if PLAYWRIGHT_AVAILABLE else "tidak tersedia"
+            _info(f"WAF: {waf_status} | Playwright: {pw_status}")
 
             _step(1, 3, "Mengumpulkan API base & endpoint ...")
             self._discover_api_bases()

@@ -199,6 +199,20 @@ const getStatusIcon = (vulnCount) => {
   return vulnCount === 0 ? Shield : AlertTriangle
 }
 
+const getScanStatusBadge = (status) => {
+  const s = (status || '').toLowerCase()
+  if (s === 'completed') {
+    return { text: 'Selesai', class: 'bg-green-100 text-green-700 border-green-200' }
+  } else if (s === 'cancelled') {
+    return { text: 'Dibatalkan', class: 'bg-gray-100 text-gray-700 border-gray-200' }
+  } else if (s === 'failed') {
+    return { text: 'Gagal', class: 'bg-red-100 text-red-700 border-red-200' }
+  } else if (s === 'running') {
+    return { text: 'Berjalan', class: 'bg-blue-100 text-blue-700 border-blue-200' }
+  }
+  return { text: status || 'Pending', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' }
+}
+
 onMounted(() => {
   fetchAllScans()
 })
@@ -379,12 +393,13 @@ onMounted(() => {
             <Table v-else>
               <TableHeader>
                 <TableRow class="bg-neutral-50">
-                  <TableHead class="w-12">#</TableHead>
+                  <TableHead class="w-12 text-center">#</TableHead>
                   <TableHead>Target URL</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Kerentanan</TableHead>
-                  <TableHead>Tanggal</TableHead>
-                  <TableHead class="text-right">Aksi</TableHead>
+                  <TableHead class="text-center">Status Scan</TableHead>
+                  <TableHead class="text-center">Kondisi</TableHead>
+                  <TableHead class="text-center">Kerentanan</TableHead>
+                  <TableHead class="text-center">Tanggal</TableHead>
+                  <TableHead class="text-center">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -393,7 +408,7 @@ onMounted(() => {
                   :key="scan.scan_id"
                   class="hover:bg-neutral-50"
                 >
-                  <TableCell class="font-medium text-neutral-500">
+                  <TableCell class="font-medium text-neutral-500 text-center">
                     {{ (currentPage - 1) * itemsPerPage + index + 1 }}
                   </TableCell>
                   <TableCell>
@@ -404,13 +419,19 @@ onMounted(() => {
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" :class="getStatusBadge(scan.vuln_count).class">
-                      {{ getStatusBadge(scan.vuln_count).text }}
+                  <TableCell class="text-center">
+                    <Badge variant="outline" :class="getScanStatusBadge(scan.status).class">
+                      {{ getScanStatusBadge(scan.status).text }}
                     </Badge>
                   </TableCell>
+                  <TableCell class="text-center">
+                    <Badge v-if="scan.status === 'completed'" variant="secondary" :class="getStatusBadge(scan.vuln_count).class">
+                      {{ getStatusBadge(scan.vuln_count).text }}
+                    </Badge>
+                    <span v-else class="text-neutral-400 text-sm">-</span>
+                  </TableCell>
                   <TableCell>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center justify-center gap-2">
                       <component 
                         :is="getStatusIcon(scan.vuln_count)" 
                         class="h-4 w-4"
@@ -421,13 +442,13 @@ onMounted(() => {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div class="flex items-center gap-2 text-sm text-neutral-600">
+                    <div class="flex items-center justify-center gap-2 text-sm text-neutral-600">
                       <Clock class="h-4 w-4" />
                       {{ scan.date }}
                     </div>
                   </TableCell>
-                  <TableCell class="text-right">
-                    <div class="flex items-center justify-end gap-2">
+                  <TableCell class="text-center">
+                    <div class="flex items-center justify-center gap-2">
                       <Button 
                         variant="ghost" 
                         size="sm"

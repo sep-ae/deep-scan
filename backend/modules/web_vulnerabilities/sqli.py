@@ -9,7 +9,12 @@ from urllib.parse import urljoin, quote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient
-from helpers.browser import crawl_spa
+from helpers.waf_checker import WAFChecker
+from helpers.spa_crawler import SPACrawler
+try:
+    from helpers.browser import crawl_spa
+except ImportError:
+    crawl_spa = None
 from helpers.scope import is_in_scope
 from helpers.parsers import (
     is_spa_html, spa_confidence,
@@ -18,12 +23,6 @@ from helpers.parsers import (
 )
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-try:
-    from playwright.sync_api import sync_playwright
-    PLAYWRIGHT_AVAILABLE = True
-except ImportError:
-    PLAYWRIGHT_AVAILABLE = False
 
 
 # ── Terminal output helpers ───────────────────────────────────────────────────
@@ -144,12 +143,7 @@ DB_ERROR_SIGNATURES = {
     'syntax error':               'Unknown',
 }
 
-CLOUDFLARE_SIGNATURES = [
-    'cloudflare', 'cf-ray', 'just a moment',
-    'checking your browser', 'cdn-cgi',
-    'enable javascript', 'ddos protection',
-    'ray id', 'cf_clearance',
-]
+# CLOUDFLARE_SIGNATURES sudah dimigrasikan ke helpers/waf_checker.py
 
 TEST_ENDPOINTS = [
     '/search', '/products', '/items', '/users',
@@ -273,6 +267,7 @@ class SQLInjectionChecker:
         self._found_urls: set    = set()
         self._is_spa             = False
         self._waf_detected       = False
+        self._waf_info: Dict     = {}
         self._api_bases: List    = []
         self._playwright_cookies = {}
         self._lock               = threading.Lock()
@@ -290,7 +285,7 @@ class SQLInjectionChecker:
     # ── Utils ─────────────────────────────────────────────────────────────────
 
     def _is_cloudflare_page(self, text: str) -> bool:
-        return any(sig in text.lower() for sig in CLOUDFLARE_SIGNATURES)
+        return WAFChecker.is_cloudflare_page(text)
 
     def _is_real_endpoint(self, r) -> bool:
         if not r:
@@ -305,18 +300,10 @@ class SQLInjectionChecker:
         return True
 
     def _detect_waf(self) -> bool:
-        r = self._client.get(
-            f"{self.base_url}/?x=<script>alert(1)</script>",
-            headers=HEADERS
-        )
-        if not r:
-            return False
-        waf_headers = {'cf-ray', 'x-sucuri-id', 'x-firewall', 'x-waf', 'x-cdn'}
-        if waf_headers & {k.lower() for k in r.headers.keys()}:
-            return True
-        if self._is_cloudflare_page(r.text):
-            return True
-        return r.status_code == 403
+        waf = WAFChecker(self.base_url, self._client, HEADERS)
+        detected = waf.detect()
+        self._waf_info = waf.get_info()
+        return detected
 
     # ── Endpoint discovery ────────────────────────────────────────────────────
 
@@ -360,7 +347,7 @@ class SQLInjectionChecker:
         if confidence >= 2 and not is_cf:
             self._is_spa = True
             _info("SPA terdeteksi, crawling dengan Playwright ...")
-            if PLAYWRIGHT_AVAILABLE:
+            if SPACrawler.is_available():
                 try:
                     pw_data = crawl_spa(
                         self.base_url, block_images=True,
@@ -762,8 +749,10 @@ class SQLInjectionChecker:
         try:
             self._waf_detected      = self._detect_waf()
             results['waf_detected'] = self._waf_detected
-            waf_status = "terdeteksi" if self._waf_detected else "tidak terdeteksi"
-            pw_status  = "tersedia"   if PLAYWRIGHT_AVAILABLE else "tidak tersedia"
+            results['waf_info']     = self._waf_info
+            waf_name   = self._waf_info.get('waf_name', '?')
+            waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
+            pw_status  = "tersedia" if SPACrawler.is_available() else "tidak tersedia"
             _info(f"WAF: {waf_status} | Playwright: {pw_status}")
 
             _step(1, 3, "Mengumpulkan endpoint ...")
@@ -789,7 +778,7 @@ class SQLInjectionChecker:
 
             js_paths = self._crawl_js_endpoints()
             results['spa_detected']    = self._is_spa
-            results['playwright_used'] = PLAYWRIGHT_AVAILABLE and self._is_spa
+            results['playwright_used'] = SPACrawler.is_available() and self._is_spa
 
             api_candidates = self._build_api_endpoints()
             with ThreadPoolExecutor(max_workers=15) as ex:

@@ -7,6 +7,7 @@ from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient
+from helpers.waf_checker import WAFChecker
 from helpers.scope import is_in_scope
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -396,12 +397,26 @@ class DirectoryListingChecker:
             'findings':         [],
             'error':            None,
             'summary':          {},
+            'waf_detected':     False,
+            'waf_info':         {},
         }
 
         try:
-            # Step 1 — Discover base URLs
-            _step(1, 3, "Mengumpulkan target ...")
+            # Step 1 — WAF Detection & Discover base URLs
+            _step(1, 4, "Mengumpulkan target ...")
             _info(f"Base URL: {self.base_url}")
+
+            # Minimal WAF detection (informatif)
+            waf = WAFChecker(self.base_url, self._client, HEADERS)
+            waf_detected = waf.detect()
+            results['waf_detected'] = waf_detected
+            results['waf_info']     = waf.get_info()
+            if waf_detected:
+                waf_name = waf.get_waf_name() or 'Unknown'
+                _info(f"WAF terdeteksi: {waf_name} (beberapa path mungkin di-block)")
+            else:
+                _info("WAF tidak terdeteksi")
+
             all_bases = self._discover_bases()
             self._all_bases = all_bases
             _info(f"Total bases: {len(all_bases)} → {', '.join(all_bases)}")
@@ -409,7 +424,7 @@ class DirectoryListingChecker:
             # Step 2 — Probe semua kombinasi
             all_paths = list(dict.fromkeys(DIRECTORY_PATHS + self.extra_paths))
             total = len(all_bases) * len(all_paths)
-            _step(2, 3, f"Probing {total} direktori "
+            _step(2, 4, f"Probing {total} direktori "
                         f"({len(all_bases)} base × {len(all_paths)} path) ...")
 
             with ThreadPoolExecutor(max_workers=15) as ex:
@@ -425,7 +440,7 @@ class DirectoryListingChecker:
                         pass
 
             # Step 3 — Finalisasi & summary
-            _step(3, 3, "Finalisasi hasil ...")
+            _step(3, 4, "Finalisasi hasil ...")
 
             if results['vulnerable_paths']:
                 results['vulnerable'] = True

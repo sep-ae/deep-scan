@@ -281,76 +281,78 @@ def _cover(elements, st, scan, vc):
     risk_col  = SEV_TEXT.get(risk_sev, C_GRAY_600)
     risk_hex  = _hex(risk_col)
 
-    # ── Full-width navy header block ──────────────────────────────────────────
-    header_data = [[
-        Paragraph(
-            '<font color="#ffffff"><b>DEEP-SCAN</b></font><br/>'
-            '<font color="#94b8db" size="7">Automated Vulnerability Scanner</font>',
-            ParagraphStyle('ch', fontSize=12, fontName='Helvetica-Bold',
-                           textColor=C_WHITE, alignment=TA_CENTER, leading=16),
-        )
-    ]]
-    header_t = Table(header_data, colWidths=[w - 40*mm])
-    header_t.setStyle(TableStyle([
-        ('BACKGROUND',    (0,0), (-1,-1), C_NAVY),
-        ('TOPPADDING',    (0,0), (-1,-1), 14),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 14),
-        ('ALIGN',         (0,0), (-1,-1), 'CENTER'),
-    ]))
-    elements.append(Spacer(1, 30))
-    elements.append(header_t)
-    elements.append(Spacer(1, 36))
+    # ── Spacer atas agar konten turun ke tengah halaman ────────────────────
+    elements.append(Spacer(1, 60))
 
-    # Title
-    elements.append(Paragraph('Laporan Pemindaian Kerentanan', st['c_title']))
+    # ── Garis navy tipis di atas sebagai aksen ────────────────────────────
+    elements.append(HRFlowable(width='40%', thickness=2, color=C_NAVY))
+    elements.append(Spacer(1, 20))
+
+    # ── Brand ─────────────────────────────────────────────────────────────
+    elements.append(Paragraph(
+        '<font color="#0f2b4c"><b>DEEP-SCAN</b></font>',
+        ParagraphStyle('cv_brand', fontSize=28, fontName='Helvetica-Bold',
+                       textColor=C_NAVY, alignment=TA_CENTER, leading=32)
+    ))
+    elements.append(Paragraph(
+        'Automated Vulnerability Scanner',
+        ParagraphStyle('cv_tagline', fontSize=9, fontName='Helvetica',
+                       textColor=C_GRAY_400, alignment=TA_CENTER,
+                       spaceBefore=2, spaceAfter=0)
+    ))
+    elements.append(Spacer(1, 30))
+
+    # ── Judul Laporan ─────────────────────────────────────────────────────
+    elements.append(Paragraph(
+        'Laporan Pemindaian Kerentanan',
+        ParagraphStyle('cv_title', fontSize=16, fontName='Helvetica-Bold',
+                       textColor=C_BLACK, alignment=TA_CENTER, leading=20)
+    ))
     elements.append(Spacer(1, 4))
     elements.append(Paragraph(
-        f'<font color="#{_hex(C_GRAY_600)}">{_safe(target)}</font>',
-        st['c_sub']
+        f'{_safe(target)}',
+        ParagraphStyle('cv_target', fontSize=10, fontName='Helvetica',
+                       textColor=C_GRAY_600, alignment=TA_CENTER)
     ))
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 20))
 
-    # Risk badge — dengan background
-    risk_badge_data = [[
+    # ── Risk badge — sederhana, hanya teks + garis bawah ──────────────────
+    risk_badge = Table([[
         Paragraph(
-            f'<font color="#{risk_hex}"><b>⬤  {risk_label}</b></font>',
-            ParagraphStyle('rb', fontSize=11, fontName='Helvetica-Bold',
+            f'<font color="#{risk_hex}"><b>{risk_label}</b></font>',
+            ParagraphStyle('cv_risk', fontSize=10, fontName='Helvetica-Bold',
                            textColor=risk_col, alignment=TA_CENTER),
         )
-    ]]
-    risk_badge_t = Table(risk_badge_data, colWidths=[80*mm])
-    risk_badge_bg = SEV_BG.get(risk_sev, C_GRAY_50)
-    risk_badge_t.setStyle(TableStyle([
-        ('BACKGROUND',    (0,0), (-1,-1), risk_badge_bg),
-        ('TOPPADDING',    (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+    ]], colWidths=[70*mm])
+    risk_badge.setStyle(TableStyle([
         ('ALIGN',         (0,0), (-1,-1), 'CENTER'),
-        ('BOX',           (0,0), (-1,-1), 0.5, risk_col),
+        ('TOPPADDING',    (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LINEBELOW',     (0,0), (-1,-1), 1.5, risk_col),
     ]))
-    risk_wrap = Table([[risk_badge_t]], colWidths=[w - 40*mm])
+    risk_wrap = Table([[risk_badge]], colWidths=[w - 40*mm])
     risk_wrap.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER')]))
     elements.append(risk_wrap)
-    elements.append(Spacer(1, 28))
+    elements.append(Spacer(1, 30))
 
-    # Divider
-    elements.append(HRFlowable(width='100%', thickness=1, color=C_NAVY))
-    elements.append(Spacer(1, 14))
+    # ── Divider tipis ─────────────────────────────────────────────────────
+    elements.append(HRFlowable(width='100%', thickness=0.5, color=C_GRAY_200))
+    elements.append(Spacer(1, 16))
 
-    # Info table — dengan Durasi Scan
+    # ── Info table — minimalis, tanpa background label berwarna ────────────
     info_rows = [
         ['Target URL',     _safe(target)],
         ['Tanggal Scan',   f'{scan_date}, pukul {scan_time}'],
         ['Durasi Scan',    duration_str],
         ['Pengguna',       _safe(username)],
         ['Scan ID',        f'DS-{scan.scan_id:04d}'],
-        ['Status',         scan.status.upper() if scan.status else '—'],
     ]
 
     info_table_data = [
         [
-            Paragraph(label, ParagraphStyle(
+            Paragraph(f'<b>{label}</b>', ParagraphStyle(
                 f'il_{i}', fontSize=8, fontName='Helvetica-Bold',
-                textColor=C_WHITE)),
+                textColor=C_GRAY_600)),
             Paragraph(value, ParagraphStyle(
                 f'iv_{i}', fontSize=9, fontName='Helvetica',
                 textColor=C_BLACK)),
@@ -358,34 +360,29 @@ def _cover(elements, st, scan, vc):
         for i, (label, value) in enumerate(info_rows)
     ]
 
-    info = Table(info_table_data, colWidths=[40*mm, 110*mm])
+    info = Table(info_table_data, colWidths=[35*mm, 115*mm])
     info.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (0, -1), C_NAVY_MID),
-        ('BACKGROUND',    (1, 0), (1, -1), C_WHITE),
-        ('ROWBACKGROUNDS',(1, 0), (1, -1), [C_WHITE, C_GRAY_50]),
-        ('GRID',          (0, 0), (-1, -1), 0.5, C_GRAY_200),
-        ('TOPPADDING',    (0, 0), (-1, -1), 7),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+        ('LINEBELOW',     (0, 0), (-1, -1), 0.3, C_GRAY_200),
+        ('TOPPADDING',    (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 6),
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
     ]))
 
     wrap = Table([[info]], colWidths=[w - 40*mm])
     wrap.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER')]))
     elements.append(wrap)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 24))
 
-    # ── Severity summary — 4 kolom berwarna ──────────────────────────────────
-    elements.append(Spacer(1, 6))
-
+    # ── Severity summary — satu baris angka minimalis ─────────────────────
     def _sev_cell(label, count, sev):
         col = SEV_TEXT[sev]
-        bg  = SEV_BG[sev]
         hex_col = _hex(col)
         return Paragraph(
-            f'<b><font size="22" color="#{hex_col}">{count}</font></b><br/>'
-            f'<font size="8" color="#{_hex(C_GRAY_600)}">{label}</font>',
-            st['c_meta']
+            f'<font size="18" color="#{hex_col}"><b>{count}</b></font><br/>'
+            f'<font size="7" color="#{_hex(C_GRAY_400)}">{label}</font>',
+            ParagraphStyle(f'cv_sc_{sev}', fontSize=7, alignment=TA_CENTER,
+                           leading=14)
         )
 
     cell_w = (w - 44*mm) / 4
@@ -398,27 +395,24 @@ def _cover(elements, st, scan, vc):
     sum_t = Table(sum_data, colWidths=[cell_w] * 4)
     sum_t.setStyle(TableStyle([
         ('ALIGN',         (0,0), (-1,-1), 'CENTER'),
-        ('TOPPADDING',    (0,0), (-1,-1), 12),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 12),
-        ('BACKGROUND',    (0,0), (0,0), SEV_BG['critical']),
-        ('BACKGROUND',    (1,0), (1,0), SEV_BG['high']),
-        ('BACKGROUND',    (2,0), (2,0), SEV_BG['medium']),
-        ('BACKGROUND',    (3,0), (3,0), SEV_BG['low']),
-        ('LINEBEFORE',    (1,0), (-1,-1), 0.5, C_GRAY_200),
-        ('BOX',           (0,0), (-1,-1), 0.5, C_GRAY_200),
+        ('TOPPADDING',    (0,0), (-1,-1), 10),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ('LINEBEFORE',    (1,0), (-1,-1), 0.3, C_GRAY_200),
     ]))
     sw = Table([[sum_t]], colWidths=[w - 40*mm])
     sw.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER')]))
     elements.append(sw)
-    elements.append(Spacer(1, 16))
-    elements.append(HRFlowable(width='100%', thickness=1, color=C_NAVY))
+    elements.append(Spacer(1, 20))
+
+    # ── Garis navy bawah ──────────────────────────────────────────────────
+    elements.append(HRFlowable(width='100%', thickness=0.5, color=C_GRAY_200))
+    elements.append(Spacer(1, 8))
 
     # Confidential notice
-    elements.append(Spacer(1, 10))
     elements.append(Paragraph(
         '<i>Dokumen ini bersifat RAHASIA dan hanya ditujukan untuk pihak yang '
-        'berwenang atas sistem yang diuji. Distribusi tanpa izin dilarang.</i>',
-        ParagraphStyle('conf', fontSize=7.5, fontName='Helvetica',
+        'berwenang atas sistem yang diuji.</i>',
+        ParagraphStyle('conf', fontSize=7, fontName='Helvetica',
                        textColor=C_GRAY_400, alignment=TA_CENTER)
     ))
 

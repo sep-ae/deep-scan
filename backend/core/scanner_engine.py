@@ -108,7 +108,6 @@ class ScannerEngine:
                 scan_results_result_id=scan_result.result_id
             ).count()
 
-            # --- Build comprehensive summary ---
             scan_result.summary = self._build_summary(
                 dns_raw, subdomain_results, port_results, tech_results,
                 web_vuln_results, scan_result.total_vulnerabilities,
