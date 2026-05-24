@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional, Set
 from urllib.parse import urlparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from helpers.http_client import HttpClient
+from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.scope import is_in_scope
 
@@ -199,7 +199,7 @@ class DirectoryListingChecker:
             headers=HEADERS,
             cookies=self.cookies,
             verify=False,
-            retries=1,
+            retries=0,
         )
 
     # ── Utils ─────────────────────────────────────────────────────────────────
@@ -384,6 +384,8 @@ class DirectoryListingChecker:
             if self.enumerate_contents:
                 self._enumerate_recursive(url, r.text, depth=1, results=results)
 
+        except HostDeadException:
+            raise
         except Exception:
             pass
 
@@ -436,6 +438,10 @@ class DirectoryListingChecker:
                 for f in as_completed(futures):
                     try:
                         f.result()
+                    except HostDeadException:
+                        for rem in futures:
+                            rem.cancel()
+                        break
                     except Exception:
                         pass
 

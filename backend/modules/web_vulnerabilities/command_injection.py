@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, List
 from urllib.parse import urljoin, quote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from helpers.http_client import HttpClient
+from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.spa_crawler import SPACrawler
 try:
@@ -237,7 +237,7 @@ class CommandInjectionChecker:
             headers=HEADERS,
             cookies=self.cookies,
             verify=False,
-            retries=1,
+            retries=0,  # Tidak retry — tarpit WAF akan memperlambat scan
         )
 
     # ── Utils ─────────────────────────────────────────────────────────────────
@@ -482,6 +482,10 @@ class CommandInjectionChecker:
                     break
                 try:
                     f.result()
+                except HostDeadException:
+                    for remaining in futures:
+                        remaining.cancel()
+                    break
                 except Exception:
                     pass
 
@@ -536,6 +540,8 @@ class CommandInjectionChecker:
                                     })
                                 self._vuln_found.set()
                             break
+                    except HostDeadException:
+                        raise
                     except Exception:
                         pass
 
@@ -604,6 +610,7 @@ class CommandInjectionChecker:
                 ]
                 for f in as_completed(futures):
                     try: f.result()
+                    except HostDeadException: raise
                     except Exception: pass
 
             js_paths = self._crawl_js_endpoints()
@@ -621,6 +628,7 @@ class CommandInjectionChecker:
                 ]
                 for f in as_completed(futures):
                     try: f.result()
+                    except HostDeadException: raise
                     except Exception: pass
 
             _info(f"Total {len(active_endpoints)} endpoint aktif")

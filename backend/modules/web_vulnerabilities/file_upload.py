@@ -5,7 +5,7 @@ import threading
 from typing import Dict, Any, Optional, List, Tuple
 from urllib.parse import urljoin, urlparse
 
-from helpers.http_client import HttpClient
+from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.spa_crawler import SPACrawler
 from helpers.scope import is_in_scope
@@ -201,7 +201,7 @@ class FileUploadChecker:
 
         self._client = HttpClient(
             timeout=self.timeout, headers=HEADERS,
-            cookies=self.cookies, verify=False, retries=2,
+            cookies=self.cookies, verify=False, retries=0,
         )
 
     # ── Utils ─────────────────────────────────────────────────────────────────

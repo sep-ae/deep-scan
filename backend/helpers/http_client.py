@@ -21,6 +21,10 @@ class SafeResponse:
         return False
 
 
+class HostDeadException(Exception):
+    """Exception khusus jika target terdeteksi mati atau DNS gagal di tengah jalan."""
+    pass
+
 class HttpClient:
     def __init__(
         self,
@@ -38,6 +42,10 @@ class HttpClient:
         self.verify = verify
         self.allow_redirects = allow_redirects
         self.session = requests.Session()
+        
+        # Tambahan pengaman untuk Dynamic Abort
+        self.consecutive_errors = 0
+        self.max_consecutive_errors = 3
 
         retry = Retry(
             total=retries,
@@ -80,11 +88,18 @@ class HttpClient:
         return self.session.request(method, url, **kwargs)
 
     def safe_request(self, method: str, url: str, **kwargs):
+        if self.consecutive_errors >= self.max_consecutive_errors:
+            raise HostDeadException(f"Target Unreachable/Tarpit: {self.max_consecutive_errors}x Error berturut-turut. Request dibatalkan.")
+            
         try:
-            return self.request(method, url, **kwargs)
+            res = self.request(method, url, **kwargs)
+            self.consecutive_errors = 0  # Reset jika sukses
+            return res
         except requests.exceptions.Timeout:
+            self.consecutive_errors += 1
             return SafeResponse(error="timeout")
         except requests.exceptions.ConnectionError as e:
+            self.consecutive_errors += 1
             return SafeResponse(error=f"connection_error: {e}")
         except requests.exceptions.RequestException as e:
             return SafeResponse(error=f"request_error: {e}")

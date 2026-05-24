@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse, urljoin, quote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from helpers.http_client import HttpClient
+from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.spa_crawler import SPACrawler
 from helpers.scope import is_in_scope
@@ -55,20 +55,19 @@ EVIL_URL = 'https://evil-deepscan-test.com'
 EVIL_DOMAIN = 'evil-deepscan-test.com'
 
 BYPASS_PAYLOADS = [
-    EVIL_URL,
-    '//evil-deepscan-test.com',
-    'https://trusted.com@evil-deepscan-test.com',
-    # Tambahan WAF bypass payloads
-    'https://evil-deepscan-test.com%00.trusted.com',
-    'https://evil-deepscan-test.com%23.trusted.com',
-    '//evil-deepscan-test.com/%2f%2e%2e',
-    'https:evil-deepscan-test.com',
-    '/\\evil-deepscan-test.com',
-    '/%0d/evil-deepscan-test.com',
-    'https://evil-deepscan-test.com/;@trusted.com',
-    '////evil-deepscan-test.com',
-    'https://evil-deepscan-test.com\\@trusted.com',
-    '%68%74%74%70%73%3A%2F%2Fevil-deepscan-test.com',
+    f'//{EVIL_DOMAIN}',
+    f'https://{EVIL_DOMAIN}',
+    f'https:{EVIL_DOMAIN}',
+    f'/%5C{EVIL_DOMAIN}',
+    f'/%0D/{EVIL_DOMAIN}',
+    f'https://{EVIL_DOMAIN}%3B@trusted.com',
+    f'////{EVIL_DOMAIN}',
+    f'https://{EVIL_DOMAIN}%5C@trusted.com',
+    f'https%3A%2F%2F{EVIL_DOMAIN}',
+    f'https://trusted.com@{EVIL_DOMAIN}',
+    f'https://{EVIL_DOMAIN}%00.trusted.com',
+    f'https://{EVIL_DOMAIN}%23.trusted.com',
+    f'//{EVIL_DOMAIN}/%2F..',
 ]
 
 SECOND_LEVEL_TLDS = {
@@ -117,7 +116,7 @@ class OpenRedirectChecker:
             headers=HEADERS,
             cookies=self.cookies,
             verify=False,
-            retries=1,
+            retries=0,
             allow_redirects=False,
         )
         self._client_follow = HttpClient(
@@ -125,7 +124,7 @@ class OpenRedirectChecker:
             headers=HEADERS,
             cookies=self.cookies,
             verify=False,
-            retries=1,
+            retries=0,
             allow_redirects=True,
         )
 
@@ -386,6 +385,8 @@ class OpenRedirectChecker:
                     'is_nested': False,
                 }, f"GET_BODY:{base}:{path}:{param}:{payload[:30]}")
 
+        except HostDeadException:
+            raise
         except Exception:
             pass
 
@@ -434,6 +435,8 @@ class OpenRedirectChecker:
                         'is_nested': False,
                     }, f"POST:{base}:{path}:{param}:{payload[:30]}")
 
+        except HostDeadException:
+            raise
         except Exception:
             pass
 
@@ -448,6 +451,8 @@ class OpenRedirectChecker:
             status = probe.status_code if probe else 0
             if status == 404 and path not in REDIRECT_PATHS:
                 return
+        except HostDeadException:
+            raise
         except Exception:
             return
 
@@ -510,6 +515,11 @@ class OpenRedirectChecker:
                         break
                     try:
                         f.result()
+                    except HostDeadException:
+                        _warn("Target mati/tarpit terdeteksi, membatalkan sisa request...")
+                        for rem in futures:
+                            rem.cancel()
+                        break
                     except Exception:
                         pass
 

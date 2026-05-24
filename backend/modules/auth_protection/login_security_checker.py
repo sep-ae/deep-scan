@@ -25,6 +25,7 @@ DEFAULT_CREDENTIALS = [
     ('superadmin@gmail.com', 'djakarta321'),
     ('septito2k21@gmail.com', 'DeepScan@2026!'),
     ('septito2k21@gmail.com', '12345678'),
+    ('sepae@gmail.com', 'sepae@gmail.com'),
     ('admin', 'admin'),
     ('admin', 'password'),
     ('admin', '123456'),
@@ -41,31 +42,64 @@ DEFAULT_CREDENTIALS = [
 
 # Login paths di base domain
 LOGIN_PATHS = [
-    '/login', '/signin', '/auth/login',
-    '/admin/login', '/user/login',
-    '/accounts/login/',
+    # Standard
+    '/login', '/signin', '/sign-in', '/sign_in',
+    '/auth/login', '/auth/signin',
+    '/admin/login', '/admin/signin',
+    '/user/login', '/user/signin',
+    '/accounts/login/', '/account/login',
     '/users/sign_in',
-    '/auth/local',
-    '/wp-login.php',
-    '/administrator',
-    '/api/auth/login', '/api/login', '/api/v1/auth/login',
-    '/api/auth/signin', '/api/v1/login', '/api/user/login',
+    '/session/new',
+    # API-style endpoints
+    '/api/login', '/api/signin',
+    '/api/auth/login', '/api/auth/signin',
+    '/api/v1/login', '/api/v1/auth/login',
+    '/api/v2/login', '/api/v2/auth/login',
+    '/api/user/login', '/api/users/login',
+    '/api/account/login', '/api/sessions',
+    '/api/authenticate', '/api/token',
+    # Framework-specific
+    '/auth/local',              # Strapi
+    '/wp-login.php',            # WordPress
+    '/administrator',           # Joomla
+    '/user/login',              # Drupal
+    '/rest/auth/1/session',     # Jira/Atlassian
+    '/oauth/token',             # OAuth2
+    '/connect/token',           # IdentityServer
+    # Backend frameworks
+    '/auth/jwt/create',         # Django REST + JWT
+    '/api-token-auth/',         # Django REST Token Auth
+    '/rest-auth/login/',        # Django allauth
+    '/dj-rest-auth/login/',     # Django dj-rest-auth
+    '/graphql',                 # GraphQL auth (Apollo/Hasura)
 ]
 
-# Prefix subdomain admin yang umum
+# Prefix subdomain yang umum untuk panel/API
 ADMIN_SUBDOMAIN_PREFIXES = [
+    # Admin panels
     'admin', 'panel', 'cp', 'dashboard',
     'manage', 'cms', 'backend', 'app',
     'portal', 'staff', 'office', 'console',
     'secure', 'my', 'account', 'accounts',
+    # API subdomains (SPA architecture)
+    'api', 'auth', 'sso', 'login',
+    'id', 'identity', 'oauth',
+    # Staging/Dev (sering punya login lemah)
+    'dev', 'staging', 'test', 'demo',
 ]
 
-# Login paths khusus di admin subdomain
+# Login paths khusus di admin/api subdomain
 ADMIN_LOGIN_PATHS = [
-    '/login', '/signin', '/auth/login',
+    '/login', '/signin', '/sign-in',
+    '/auth/login', '/auth/signin',
     '/wp-login.php',
     '/administrator',
     '/auth/local',
+    # API paths (untuk api.domain.com)
+    '/api/login', '/api/auth/login',
+    '/api/v1/login', '/api/v1/auth/login',
+    '/api/authenticate', '/api/token',
+    '/oauth/token',
 ]
 
 WARMUP_PATHS = {
@@ -203,48 +237,136 @@ class LoginSecurityChecker:
  
     def _discover_admin_subdomain(self) -> Optional[str]:
         """
-        Detect admin panel di subdomain berbeda.
-        Contoh: inicompany.my.id → admin.inicompany.my.id/login
-        Return: base URL subdomain kalau ketemu, None kalau tidak.
+        Detect admin panel / API di subdomain berbeda.
+        Contoh: blog.septito.my.id → api.septito.my.id/api/auth/login
+        Support second-level TLD: .my.id, .co.id, .ac.id, dll.
         """
         parsed   = urlparse(self.base_url)
         hostname = parsed.hostname
         scheme   = parsed.scheme
 
-        # Kalau sudah subdomain (admin.xxx.my.id), skip — cegah infinite detect
-        parts = hostname.split('.')
-        if len(parts) > 2:
-            # Kalau sudah 3 level (admin.domain.tld), tidak perlu cari lagi
-            return None
+        # Deteksi base domain dengan awareness second-level TLD
+        SECOND_LEVEL_TLDS = {
+            'my.id', 'co.id', 'web.id', 'sch.id', 'ac.id', 'net.id', 'or.id',
+            'co.uk', 'com.au', 'co.nz', 'co.za', 'com.br', 'com.mx',
+            'co.in', 'co.jp', 'co.kr', 'com.sg', 'com.ph',
+        }
 
-        print(f"    [*] Mencari admin subdomain untuk {hostname}...")
+        parts = hostname.split('.')
+
+        # Cari base domain
+        base_domain = hostname  # default
+        current_subdomain = None
+
+        for tld in SECOND_LEVEL_TLDS:
+            if hostname.endswith('.' + tld):
+                # Contoh: blog.septito.my.id → base = septito.my.id, sub = blog
+                prefix = hostname[: -(len(tld) + 1)]  # "blog.septito"
+                prefix_parts = prefix.split('.')
+                if len(prefix_parts) >= 2:
+                    current_subdomain = prefix_parts[0]  # "blog"
+                    base_domain = '.'.join(prefix_parts[1:]) + '.' + tld  # "septito.my.id"
+                else:
+                    base_domain = hostname  # sudah root domain
+                break
+        else:
+            # TLD biasa (.com, .org, .net, dll)
+            if len(parts) > 2:
+                current_subdomain = parts[0]
+                base_domain = '.'.join(parts[1:])
+            elif len(parts) == 2:
+                base_domain = hostname  # sudah root domain
+
+        print(f"    [*] Mencari admin/API subdomain untuk {hostname}...")
+        print(f"    [*] Base domain: {base_domain} | Current sub: {current_subdomain or 'none'}")
 
         for prefix in ADMIN_SUBDOMAIN_PREFIXES:
-            candidate_base = f"{scheme}://{prefix}.{hostname}"
+            # Skip jika prefix sama dengan subdomain saat ini
+            if prefix == current_subdomain:
+                continue
+
+            candidate_base = f"{scheme}://{prefix}.{base_domain}"
+
+            # Quick connectivity check — skip jika subdomain tidak resolve
+            try:
+                r_check = self.session.get(
+                    f"{candidate_base}/", timeout=3,
+                    allow_redirects=True, verify=False
+                )
+            except Exception:
+                continue  # Subdomain mati, skip semua path-nya
+
             for path in ADMIN_LOGIN_PATHS:
+                url = f"{candidate_base}{path}"
                 try:
+                    # ── Coba GET dulu ──
                     r = self.session.get(
-                        f"{candidate_base}{path}",
-                        timeout=5,
-                        allow_redirects=False,
-                        verify=False
+                        url, timeout=5,
+                        allow_redirects=False, verify=False
                     )
+
                     if r.status_code == 200:
-                        print(f"    [+] Admin panel ditemukan: {candidate_base}{path}")
-                        # Warm-up session ke subdomain ini
+                        print(f"    [+] Admin/API panel ditemukan: {url}")
                         self._warmup_subdomain(candidate_base)
                         return candidate_base
-                    # 302 redirect ke /login juga valid (sudah ada panel-nya)
+
                     if r.status_code == 302:
                         loc = r.headers.get('Location', '')
                         if 'login' in loc.lower() or prefix in loc.lower():
-                            print(f"    [+] Admin panel ditemukan (redirect): {candidate_base}")
+                            print(f"    [+] Admin/API panel ditemukan (redirect): {candidate_base}")
+                            self._warmup_subdomain(candidate_base)
+                            return candidate_base
+
+                    # JSON API: 401/422 = endpoint ada
+                    if r.status_code in (401, 422):
+                        is_json = 'application/json' in r.headers.get('Content-Type', '')
+                        if is_json:
+                            print(f"    [+] API login ditemukan: {url} [{r.status_code}]")
+                            self._warmup_subdomain(candidate_base)
+                            return candidate_base
+
+                    # ── 405 = endpoint ada tapi hanya terima POST → coba POST ──
+                    if r.status_code == 405:
+                        r2 = self.session.post(
+                            url,
+                            json={'email': 'probe@test.com', 'password': 'wrongprobe123'},
+                            headers={
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                            },
+                            timeout=5, allow_redirects=False, verify=False
+                        )
+                        if r2.status_code in (200, 401, 422, 400):
+                            print(f"    [+] API login ditemukan (POST): {url} [{r2.status_code}]")
+                            self._warmup_subdomain(candidate_base)
+                            return candidate_base
+
+                except Exception:
+                    pass
+
+            # ── Fallback: coba POST langsung ke path API populer ──
+            for path in ['/api/auth/login', '/api/login', '/api/v1/auth/login']:
+                url = f"{candidate_base}{path}"
+                try:
+                    r = self.session.post(
+                        url,
+                        json={'email': 'probe@test.com', 'password': 'wrongprobe123'},
+                        headers={
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                        },
+                        timeout=5, allow_redirects=False, verify=False
+                    )
+                    if r.status_code in (200, 401, 422, 400):
+                        is_json = 'application/json' in r.headers.get('Content-Type', '')
+                        if is_json:
+                            print(f"    [+] API login ditemukan (POST fallback): {url} [{r.status_code}]")
                             self._warmup_subdomain(candidate_base)
                             return candidate_base
                 except Exception:
                     pass
 
-        print(f"    [-] Tidak ada admin subdomain ditemukan.")
+        print(f"    [-] Tidak ada admin/API subdomain ditemukan.")
         return None
 
     def _warmup_subdomain(self, subdomain_base: str):

@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 from urllib.parse import urljoin, quote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from helpers.http_client import HttpClient
+from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.spa_crawler import SPACrawler
 try:
@@ -279,7 +279,7 @@ class SQLInjectionChecker:
             headers=HEADERS,
             cookies=self.cookies,
             verify=False,
-            retries=1,
+            retries=0,  # Tidak retry — tarpit WAF akan memperlambat scan
         )
 
     # ── Utils ─────────────────────────────────────────────────────────────────
@@ -568,6 +568,8 @@ class SQLInjectionChecker:
                             if not results['db_type']:
                                 results['db_type'] = db
                     return True
+        except HostDeadException:
+            raise
         except Exception:
             pass
         return False
@@ -685,6 +687,8 @@ class SQLInjectionChecker:
                         if not results['db_type']:
                             results['db_type'] = db_hint
                 return True
+            except HostDeadException:
+                raise
             except Exception:
                 pass
         return False
@@ -774,6 +778,7 @@ class SQLInjectionChecker:
                 ]
                 for f in as_completed(futures):
                     try: f.result()
+                    except HostDeadException: raise
                     except Exception: pass
 
             js_paths = self._crawl_js_endpoints()
@@ -791,6 +796,7 @@ class SQLInjectionChecker:
                 ]
                 for f in as_completed(futures):
                     try: f.result()
+                    except HostDeadException: raise
                     except Exception: pass
 
             _info(f"Total {len(active_endpoints)} endpoint aktif")
@@ -803,6 +809,10 @@ class SQLInjectionChecker:
                 ]
                 for f in as_completed(futures):
                     try: f.result()
+                    except HostDeadException:
+                        for rem in futures:
+                            rem.cancel()
+                        break
                     except Exception: pass
 
             if not results['vulnerable_paths']:

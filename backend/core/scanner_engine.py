@@ -57,6 +57,10 @@ class ScannerEngine:
             self.target_url = self.scan.target_url
             self.domain     = self._extract_domain(self.target_url)
 
+            self.update_progress(8, "Checking target reachability...")
+            if not self._check_target_alive():
+                raise Exception(f"Target {self.target_url} is unreachable or down. Please check the URL/Domain.")
+
             self.update_progress(10, "Reconnaissance & Information Gathering")
             dns_raw, ip = run_dns_lookup(self.domain)
             if ip:
@@ -142,6 +146,20 @@ class ScannerEngine:
         parsed = urlparse(url)
         domain = parsed.netloc or parsed.path
         return domain.replace('www.', '').replace('http://', '').replace('https://', '')
+
+    def _check_target_alive(self) -> bool:
+        """Melakukan koneksi HTTP/HTTPS awal untuk mengecek apakah target UP."""
+        from helpers.http_client import HttpClient
+        try:
+            # retries=0 agar tidak stuck lama jika host benar-benar down
+            with HttpClient(timeout=10, retries=0) as client:
+                r = client.get(self.target_url)
+                # Jika SafeResponse (status 0) dan ada error connection/timeout -> down
+                if not getattr(r, 'ok', False) and getattr(r, 'status_code', 0) == 0:
+                    return False
+            return True
+        except Exception:
+            return False
 
     def _build_summary(self, dns_raw, subdomain_results, port_results,
                        tech_results, web_vuln_results, total_vulns) -> str:
