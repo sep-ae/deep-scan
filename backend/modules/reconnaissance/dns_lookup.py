@@ -28,9 +28,9 @@ class DNSLookup:
             ('TXT',   self._get_txt_records),
             ('CNAME', self._get_cname_records),
             ('SOA',   self._get_soa_records),
-            ('CAA',   self._get_caa_records),      # ← baru: SSL cert authority
-            ('PTR',   self._get_ptr_records),      # ← baru: reverse DNS
-            ('SRV',   self._get_srv_records),      # ← baru: service discovery
+            ('CAA',   self._get_caa_records),     
+            ('PTR',   self._get_ptr_records),    
+            ('SRV',   self._get_srv_records),      
         ]
 
         global_start = time.time()

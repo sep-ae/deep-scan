@@ -1,9 +1,10 @@
 # core/report_generator.py
 """
 PDF Report Generator — Deep-Scan
-Desain: Professional enterprise-grade (ala Nessus/Qualys)
+Desain: Professional enterprise-grade (ala Nessus/Qualys/Capture The Bug)
 Palette: Navy blue + hitam + abu. Bersih, formal, mudah dibaca.
-Struktur: Cover → Disclaimer & Scope → Vulnerability Details → Recon Data
+Struktur: Cover → TOC → Disclaimer & Scope → Executive Summary
+          → Vulnerability Details → Reconnaissance Data
 """
 from io import BytesIO
 from datetime import datetime
@@ -195,8 +196,20 @@ def _styles():
         ),
         'notice': ParagraphStyle(
             'notice', fontSize=8.5, fontName='Helvetica',
-            textColor=C_GRAY_800, leading=13, spaceAfter=4,
-            alignment=TA_JUSTIFY,
+            textColor=C_GRAY_800, leading=14, spaceAfter=6,
+            alignment=TA_JUSTIFY, firstLineIndent=20,
+        ),
+        'toc_item': ParagraphStyle(
+            'toc_item', fontSize=9, fontName='Helvetica',
+            textColor=C_GRAY_800, leading=18, spaceAfter=2,
+        ),
+        'toc_sub': ParagraphStyle(
+            'toc_sub', fontSize=9, fontName='Helvetica',
+            textColor=C_GRAY_600, leading=18, spaceAfter=1,
+        ),
+        'toc_h': ParagraphStyle(
+            'toc_h', fontSize=9, fontName='Helvetica-Bold',
+            textColor=C_NAVY, leading=18, spaceAfter=2,
         ),
     }
 
@@ -204,217 +217,214 @@ def _styles():
 # ── Header / Footer ───────────────────────────────────────────────────────────
 
 def _hf(canvas, doc):
+    """Header dan footer minimal — no top header bar, footer with date (left) and page number (right)."""
     if doc.page == 1:
         return
     canvas.saveState()
     w, h = A4
 
-    # ── Top bar: navy strip tipis
-    canvas.setFillColor(C_NAVY)
-    canvas.rect(0, h - 14*mm, w, 14*mm, fill=1, stroke=0)
-    canvas.setFont('Helvetica-Bold', 7.5)
-    canvas.setFillColor(C_WHITE)
-    canvas.drawString(20*mm, h - 9*mm, 'DEEP-SCAN  |  Vulnerability Scan Report')
-    canvas.setFont('Helvetica', 7.5)
-    canvas.drawRightString(w - 20*mm, h - 9*mm,
-                           f'Page {doc.page}   |   CONFIDENTIAL')
-
     # ── Bottom bar: garis abu tipis
     canvas.setStrokeColor(C_GRAY_200)
     canvas.setLineWidth(0.5)
     canvas.line(20*mm, 13*mm, w - 20*mm, 13*mm)
-    canvas.setFont('Helvetica', 7)
-    canvas.setFillColor(C_GRAY_400)
-    canvas.drawString(20*mm, 9*mm, 'Deep-Scan Automated Vulnerability Scanner')
-    canvas.drawRightString(w - 20*mm, 9*mm,
-                           'Generated: ' + datetime.now().strftime('%d %b %Y, %H:%M'))
+    
+    canvas.setFont('Helvetica', 8)
+    canvas.setFillColor(C_GRAY_600)
+    
+    # Left: Date of report generation
+    date_str = datetime.now().strftime('%d %b %Y')
+    canvas.drawString(20*mm, 8*mm, f'Date: {date_str}')
+    
+    # Right: Page number
+    canvas.drawRightString(w - 20*mm, 8*mm, f'Page {doc.page}')
     canvas.restoreState()
 
 
 # ── Cover ─────────────────────────────────────────────────────────────────────
 
-def _cover(elements, st, scan, vc):
+def _cover(elements):
+    """Reserve page 1 for the canvas-drawn cover — content via onFirstPage."""
+    elements.append(Spacer(1, 1))
+    elements.append(PageBreak())
+
+
+def _draw_shield(canvas, x, y, size, fill_color):
+    """Draw a simple shield icon at (x, y) with given size."""
+    canvas.saveState()
+    s = size
+    canvas.setFillColor(fill_color)
+    p = canvas.beginPath()
+    p.moveTo(x + s * 0.5, y + s)         # top center
+    p.lineTo(x + s,       y + s * 0.72)  # top-right
+    p.lineTo(x + s,       y + s * 0.32)  # mid-right
+    p.lineTo(x + s * 0.5, y)             # bottom point
+    p.lineTo(x,           y + s * 0.32)  # mid-left
+    p.lineTo(x,           y + s * 0.72)  # top-left
+    p.close()
+    canvas.drawPath(p, fill=1, stroke=0)
+    canvas.restoreState()
+
+
+def _draw_city_silhouette(canvas, page_w, base_y):
+    """Draw abstract geometric building silhouette above the footer bar."""
+    canvas.saveState()
+    # (x_ratio, width_pt, height_pt, hex_color)
+    # Three layers create depth: back (dark), mid, front (lighter)
+    blocks = [
+        # Back layer — wider, shorter, darkest
+        (0.12, 60, 120, '#0a2e3a'),
+        (0.35, 65, 140, '#0b3040'),
+        (0.58, 70, 125, '#0a2c38'),
+        (0.80, 60, 145, '#0b3242'),
+        # Mid layer
+        (0.22, 45, 175, '#104a58'),
+        (0.45, 50, 195, '#125060'),
+        (0.68, 48, 180, '#114c5a'),
+        (0.88, 42, 165, '#135462'),
+        # Front layer — narrower, taller, lightest
+        (0.18, 35, 215, '#186070'),
+        (0.40, 38, 240, '#1a6878'),
+        (0.60, 40, 225, '#196575'),
+        (0.78, 36, 250, '#1b7080'),
+    ]
+    for x_ratio, bw, bh, col in blocks:
+        bx = page_w * x_ratio - bw / 2
+        canvas.setFillColor(colors.HexColor(col))
+        canvas.rect(bx, base_y, bw, bh, fill=1, stroke=0)
+    canvas.restoreState()
+
+
+def _draw_cover(canvas, doc, scan):
+    """Draw full cover page on canvas — Canva-inspired gradient + city silhouette."""
     w, h = A4
+    canvas.saveState()
 
-    total    = vc.get('total', 0)
-    critical = vc.get('critical', 0)
-    high     = vc.get('high', 0)
-    medium   = vc.get('medium', 0)
-    low      = vc.get('low', 0)
+    footer_h = 42 * mm  # dark footer bar height
 
-    scan_date = scan.start_time.strftime('%d %B %Y') if scan.start_time else '—'
-    scan_time = scan.start_time.strftime('%H:%M WIB') if scan.start_time else '—'
-    target    = scan.target_url or '—'
-    username  = getattr(scan, 'user', None)
-    if username:
-        username = getattr(username, 'username', None) or getattr(username, 'email', None) or '—'
-    else:
-        username = '—'
+    # ── 1. Gradient background (dark navy → teal) ────────────────────────
+    top_rgb = (11, 25, 46)    # #0b192e
+    bot_rgb = (16, 72, 92)    # #10485c
+    steps = 100
+    strip = (h - footer_h) / steps
+    for i in range(steps):
+        t = i / max(steps - 1, 1)
+        r = (top_rgb[0] + t * (bot_rgb[0] - top_rgb[0])) / 255
+        g = (top_rgb[1] + t * (bot_rgb[1] - top_rgb[1])) / 255
+        b = (top_rgb[2] + t * (bot_rgb[2] - top_rgb[2])) / 255
+        canvas.setFillColorRGB(r, g, b)
+        y = h - (i + 1) * strip
+        canvas.rect(0, y, w, strip + 0.5, fill=1, stroke=0)
 
-    # Hitung durasi scan
-    duration_str = '—'
-    if scan.start_time and scan.end_time:
-        delta = scan.end_time - scan.start_time
-        mins, secs = divmod(int(delta.total_seconds()), 60)
-        hrs, mins = divmod(mins, 60)
-        if hrs > 0:
-            duration_str = f'{hrs} jam {mins} menit {secs} detik'
-        elif mins > 0:
-            duration_str = f'{mins} menit {secs} detik'
-        else:
-            duration_str = f'{secs} detik'
+    # ── 2. Dark footer bar ────────────────────────────────────────────────
+    canvas.setFillColor(colors.HexColor('#091220'))
+    canvas.rect(0, 0, w, footer_h, fill=1, stroke=0)
 
-    # Risk level
-    risk_label = (
-        'CRITICAL RISK'  if critical > 0 else
-        'HIGH RISK'      if high     > 0 else
-        'MEDIUM RISK'    if medium   > 0 else
-        'LOW RISK'       if low      > 0 else
-        'NO FINDINGS'
-    )
-    risk_sev = (
-        'critical' if critical > 0 else
-        'high'     if high     > 0 else
-        'medium'   if medium   > 0 else
-        'low'
-    )
-    risk_col  = SEV_TEXT.get(risk_sev, C_GRAY_600)
-    risk_hex  = _hex(risk_col)
+    # Accent line at top of footer
+    canvas.setStrokeColor(colors.HexColor('#1a5a9c'))
+    canvas.setLineWidth(1.5)
+    canvas.line(0, footer_h, w, footer_h)
 
-    # ── Spacer atas agar konten turun ke tengah halaman ────────────────────
-    elements.append(Spacer(1, 60))
+    # ── 3. Geometric city silhouette ──────────────────────────────────────
+    _draw_city_silhouette(canvas, w, footer_h)
 
-    # ── Garis navy tipis di atas sebagai aksen ────────────────────────────
-    elements.append(HRFlowable(width='40%', thickness=2, color=C_NAVY))
-    elements.append(Spacer(1, 20))
+    # ── 4. Brand / Logo ───────────────────────────────────────────────────
+    lx = 25 * mm
+    brand_y = h - 28 * mm
+    _draw_shield(canvas, lx, brand_y - 2, 14, colors.HexColor('#2196F3'))
+    canvas.setFillColor(C_WHITE)
+    canvas.setFont('Helvetica-Bold', 12)
+    canvas.drawString(lx + 18, brand_y, 'Deep-Scan')
 
-    # ── Brand ─────────────────────────────────────────────────────────────
-    elements.append(Paragraph(
-        '<font color="#0f2b4c"><b>DEEP-SCAN</b></font>',
-        ParagraphStyle('cv_brand', fontSize=28, fontName='Helvetica-Bold',
-                       textColor=C_NAVY, alignment=TA_CENTER, leading=32)
-    ))
-    elements.append(Paragraph(
-        'Automated Vulnerability Scanner',
-        ParagraphStyle('cv_tagline', fontSize=9, fontName='Helvetica',
-                       textColor=C_GRAY_400, alignment=TA_CENTER,
-                       spaceBefore=2, spaceAfter=0)
-    ))
-    elements.append(Spacer(1, 30))
+    # ── 5. Main title ─────────────────────────────────────────────────────
+    canvas.setFillColor(C_WHITE)
+    canvas.setFont('Helvetica-Bold', 32)
+    title_y = h - 72 * mm
+    canvas.drawString(lx, title_y, 'Web Vulnerability')
+    canvas.drawString(lx, title_y - 14 * mm, 'Scan Report')
 
-    # ── Judul Laporan ─────────────────────────────────────────────────────
-    elements.append(Paragraph(
-        'Laporan Pemindaian Kerentanan',
-        ParagraphStyle('cv_title', fontSize=16, fontName='Helvetica-Bold',
-                       textColor=C_BLACK, alignment=TA_CENTER, leading=20)
-    ))
-    elements.append(Spacer(1, 4))
-    elements.append(Paragraph(
-        f'{_safe(target)}',
-        ParagraphStyle('cv_target', fontSize=10, fontName='Helvetica',
-                       textColor=C_GRAY_600, alignment=TA_CENTER)
-    ))
-    elements.append(Spacer(1, 20))
+    # ── 6. Subtitle ───────────────────────────────────────────────────────
+    domain = _domain_from_url(scan.target_url or 'target')
+    canvas.setFillColor(colors.HexColor('#94b8d8'))
+    canvas.setFont('Helvetica', 13)
+    sub_y = title_y - 32 * mm
+    canvas.drawString(lx, sub_y, 'Security Assessment Report')
+    canvas.drawString(lx, sub_y - 6 * mm, f'for {domain}')
 
-    # ── Risk badge — sederhana, hanya teks + garis bawah ──────────────────
-    risk_badge = Table([[
-        Paragraph(
-            f'<font color="#{risk_hex}"><b>{risk_label}</b></font>',
-            ParagraphStyle('cv_risk', fontSize=10, fontName='Helvetica-Bold',
-                           textColor=risk_col, alignment=TA_CENTER),
-        )
-    ]], colWidths=[70*mm])
-    risk_badge.setStyle(TableStyle([
-        ('ALIGN',         (0,0), (-1,-1), 'CENTER'),
-        ('TOPPADDING',    (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LINEBELOW',     (0,0), (-1,-1), 1.5, risk_col),
-    ]))
-    risk_wrap = Table([[risk_badge]], colWidths=[w - 40*mm])
-    risk_wrap.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER')]))
-    elements.append(risk_wrap)
-    elements.append(Spacer(1, 30))
+    # Thin accent line below subtitle
+    canvas.setStrokeColor(colors.HexColor('#1e5fa8'))
+    canvas.setLineWidth(1)
+    canvas.line(lx, sub_y - 14 * mm, lx + 100 * mm, sub_y - 14 * mm)
 
-    # ── Divider tipis ─────────────────────────────────────────────────────
-    elements.append(HRFlowable(width='100%', thickness=0.5, color=C_GRAY_200))
-    elements.append(Spacer(1, 16))
+    # ── 7. Footer content ─────────────────────────────────────────────────
+    # Left: metadata
+    canvas.setFillColor(C_WHITE)
+    canvas.setFont('Helvetica-Bold', 10)
+    canvas.drawString(lx, 30 * mm, 'Deep-Scan Security Scanner')
 
-    # ── Info table — minimalis, tanpa background label berwarna ────────────
-    info_rows = [
-        ['Target URL',     _safe(target)],
-        ['Tanggal Scan',   f'{scan_date}, pukul {scan_time}'],
-        ['Durasi Scan',    duration_str],
-        ['Pengguna',       _safe(username)],
-        ['Scan ID',        f'DS-{scan.scan_id:04d}'],
+    canvas.setFillColor(colors.HexColor('#7a90a8'))
+    canvas.setFont('Helvetica', 8.5)
+    canvas.drawString(lx, 22 * mm, scan.target_url or '\u2014')
+    date_str = datetime.now().strftime('%d %B %Y')
+    canvas.drawString(lx, 14 * mm, f'Generated: {date_str}')
+
+    # Right: year
+    canvas.setFillColor(C_WHITE)
+    canvas.setFont('Helvetica-Bold', 28)
+    canvas.drawRightString(w - 25 * mm, 22 * mm, datetime.now().strftime('%Y'))
+
+    canvas.restoreState()
+
+
+# ── Table of Contents ─────────────────────────────────────────────────────────
+
+def _toc(elements, st, has_vulns, has_recon):
+    elements.append(Paragraph('Table of Contents', st['h1']))
+    elements.append(HRFlowable(width='100%', thickness=1, color=C_NAVY))
+    elements.append(Spacer(1, 10))
+
+    # (level, number, title, show)  — level 0 = main, level 1 = sub
+    sections = [
+        (0, '1',   'Important Notes & Scan Scope',          True),
+        (1, '1.1', 'Tool Limitations Disclaimer',            True),
+        (1, '1.2', 'Target & Scope',                         True),
+        (1, '1.3', 'Scanning Methods & Categories',          True),
+        (0, '2',   'Executive Summary',                      True),
+        (1, '2.1', 'Severity Distribution',                  True),
+        (1, '2.2', 'Assessment Methodology (CVSS v3.1)',     True),
+        (0, '3',   'Vulnerability Details',                  has_vulns),
+        (0, '4',   'Reconnaissance Data',                   has_recon),
     ]
 
-    info_table_data = [
-        [
-            Paragraph(f'<b>{label}</b>', ParagraphStyle(
-                f'il_{i}', fontSize=8, fontName='Helvetica-Bold',
-                textColor=C_GRAY_600)),
-            Paragraph(value, ParagraphStyle(
-                f'iv_{i}', fontSize=9, fontName='Helvetica',
-                textColor=C_BLACK)),
+    for level, num, title, show in sections:
+        if not show:
+            continue
+        is_main = (level == 0)
+        indent = 10 * mm * level  # sub-items indented
+
+        # Number column
+        num_style = ParagraphStyle(
+            f'toc_n_{num}', fontSize=9,
+            fontName='Helvetica-Bold' if is_main else 'Helvetica',
+            textColor=C_NAVY if is_main else C_GRAY_600,
+        )
+        # Title column
+        title_style = st['toc_h'] if is_main else st['toc_sub']
+        title_html  = f'<b>{title}</b>' if is_main else title
+
+        row = Table(
+            [[Paragraph(num, num_style), Paragraph(title_html, title_style)]],
+            colWidths=[12 * mm + indent, 148 * mm - indent],
+        )
+        row_cmds = [
+            ('LEFTPADDING',   (0, 0), (0, 0), 4 + indent),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4 if is_main else 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4 if is_main else 2),
+            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
         ]
-        for i, (label, value) in enumerate(info_rows)
-    ]
-
-    info = Table(info_table_data, colWidths=[35*mm, 115*mm])
-    info.setStyle(TableStyle([
-        ('LINEBELOW',     (0, 0), (-1, -1), 0.3, C_GRAY_200),
-        ('TOPPADDING',    (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 6),
-        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-
-    wrap = Table([[info]], colWidths=[w - 40*mm])
-    wrap.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER')]))
-    elements.append(wrap)
-    elements.append(Spacer(1, 24))
-
-    # ── Severity summary — satu baris angka minimalis ─────────────────────
-    def _sev_cell(label, count, sev):
-        col = SEV_TEXT[sev]
-        hex_col = _hex(col)
-        return Paragraph(
-            f'<font size="18" color="#{hex_col}"><b>{count}</b></font><br/>'
-            f'<font size="7" color="#{_hex(C_GRAY_400)}">{label}</font>',
-            ParagraphStyle(f'cv_sc_{sev}', fontSize=7, alignment=TA_CENTER,
-                           leading=14)
-        )
-
-    cell_w = (w - 44*mm) / 4
-    sum_data = [[
-        _sev_cell('CRITICAL', critical, 'critical'),
-        _sev_cell('HIGH',     high,     'high'),
-        _sev_cell('MEDIUM',   medium,   'medium'),
-        _sev_cell('LOW',      low,      'low'),
-    ]]
-    sum_t = Table(sum_data, colWidths=[cell_w] * 4)
-    sum_t.setStyle(TableStyle([
-        ('ALIGN',         (0,0), (-1,-1), 'CENTER'),
-        ('TOPPADDING',    (0,0), (-1,-1), 10),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-        ('LINEBEFORE',    (1,0), (-1,-1), 0.3, C_GRAY_200),
-    ]))
-    sw = Table([[sum_t]], colWidths=[w - 40*mm])
-    sw.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER')]))
-    elements.append(sw)
-    elements.append(Spacer(1, 20))
-
-    # ── Garis navy bawah ──────────────────────────────────────────────────
-    elements.append(HRFlowable(width='100%', thickness=0.5, color=C_GRAY_200))
-    elements.append(Spacer(1, 8))
-
-    # Confidential notice
-    elements.append(Paragraph(
-        '<i>Dokumen ini bersifat RAHASIA dan hanya ditujukan untuk pihak yang '
-        'berwenang atas sistem yang diuji.</i>',
-        ParagraphStyle('conf', fontSize=7, fontName='Helvetica',
-                       textColor=C_GRAY_400, alignment=TA_CENTER)
-    ))
+        if is_main:
+            row_cmds.append(('LINEBELOW', (0, 0), (-1, -1), 0.4, C_GRAY_200))
+        row.setStyle(TableStyle(row_cmds))
+        elements.append(row)
 
     elements.append(PageBreak())
 
@@ -422,29 +432,54 @@ def _cover(elements, st, scan, vc):
 # ── Disclaimer & Scope ────────────────────────────────────────────────────────
 
 def _disclaimer(elements, st, scan):
-    elements.append(Paragraph('Catatan Penting & Ruang Lingkup Pemindaian', st['h1']))
+    elements.append(Paragraph('1. Important Notes & Scan Scope', st['h1']))
     elements.append(HRFlowable(width='100%', thickness=1, color=C_NAVY))
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 10))
 
-    # ── Pernyataan Keterbatasan ───────────────────────────────────────────────
-    elements.append(Paragraph('Pernyataan Keterbatasan Alat', st['h2']))
+    # ── 1.1 Pernyataan Keterbatasan ───────────────────────────────────────────
+    elements.append(Paragraph('1.1 Tool Limitations Disclaimer', st['h2']))
 
-    notice_text = (
-        'Laporan ini dihasilkan secara <b>otomatis</b> oleh Deep-Scan Vulnerability Scanner. '
-        'Pemindaian dilakukan menggunakan serangkaian teknik pengujian berbasis pola dan sinyal '
-        'yang telah ditentukan sebelumnya. Oleh karena itu, <b>hasil pemindaian ini tidak '
-        'menjamin kelengkapan atau keakuratan 100%</b> dan mungkin mengandung: '
+    notice_p1 = (
+        'Dokumen ini merupakan laporan hasil pemindaian keamanan yang dihasilkan secara '
+        '<b>otomatis</b> oleh <b>Deep-Scan Vulnerability Scanner</b>, sebuah alat pengujian '
+        'keamanan aplikasi web yang dirancang untuk mengidentifikasi potensi kerentanan pada '
+        'target yang telah ditentukan. Pemindaian dilakukan dengan menggunakan serangkaian '
+        'teknik pengujian berbasis pola (<i>pattern-based</i>), analisis sinyal '
+        '(<i>signature matching</i>), serta simulasi serangan pasif yang telah dikonfigurasi '
+        'sesuai dengan standar pengujian keamanan industri.'
     )
-    elements.append(Paragraph(notice_text, st['notice']))
+    elements.append(Paragraph(notice_p1, st['notice']))
+
+    notice_p2 = (
+        'Penting untuk dipahami bahwa setiap alat pemindaian otomatis memiliki batasan '
+        'inheren dalam hal cakupan dan akurasi deteksi. <b>Hasil pemindaian ini tidak '
+        'menjamin kelengkapan atau keakuratan 100%</b> terhadap seluruh potensi kerentanan '
+        'yang mungkin ada pada sistem target. Laporan ini sebaiknya digunakan sebagai '
+        'panduan awal (<i>initial assessment</i>) dan bukan sebagai pengganti pengujian '
+        'penetrasi manual yang komprehensif oleh tenaga ahli keamanan siber. Beberapa '
+        'keterbatasan utama yang perlu diperhatikan antara lain:'
+    )
+    elements.append(Paragraph(notice_p2, st['notice']))
 
     caveats = [
-        ['•', '<b>False Positive</b> — temuan yang dilaporkan sebagai kerentanan namun '
-              'sebenarnya bukan ancaman nyata pada konteks aplikasi tersebut.'],
-        ['•', '<b>False Negative</b> — kerentanan yang tidak terdeteksi karena berada '
-              'di luar jangkauan atau pola yang didukung alat ini.'],
-        ['•', '<b>Keterbatasan Otomasi</b> — beberapa kerentanan kompleks, seperti '
-              'Business Logic Flaws atau kerentanan yang memerlukan konteks autentikasi '
-              'mendalam, tidak dapat dideteksi sepenuhnya oleh pemindaian otomatis.'],
+        ['•', '<b>False Positive</b> — Terdapat kemungkinan bahwa beberapa temuan yang '
+              'dilaporkan dalam dokumen ini merupakan kerentanan yang terdeteksi secara keliru. '
+              'Hal ini dapat terjadi karena pola respons server yang menyerupai indikator '
+              'kerentanan, namun pada konteks implementasi aktual tidak menimbulkan risiko '
+              'keamanan yang nyata. Setiap temuan perlu divalidasi terhadap lingkungan '
+              'produksi untuk memastikan relevansinya.'],
+        ['•', '<b>False Negative</b> — Beberapa kerentanan yang ada pada sistem target '
+              'mungkin tidak terdeteksi oleh pemindaian ini. Hal ini dapat disebabkan oleh '
+              'berbagai faktor, termasuk kerentanan yang berada di luar jangkauan teknik '
+              'pemindaian yang digunakan, konfigurasi <i>Web Application Firewall</i> (WAF) '
+              'yang memblokir payload pengujian, atau kerentanan yang memerlukan kondisi '
+              'spesifik tertentu untuk dapat teridentifikasi.'],
+        ['•', '<b>Keterbatasan Pemindaian Otomatis</b> — Sejumlah kategori kerentanan yang '
+              'bersifat kompleks, seperti <i>Business Logic Flaws</i>, <i>Race Conditions</i>, '
+              'kerentanan pada mekanisme otorisasi multi-level, serta kelemahan yang memerlukan '
+              'pemahaman mendalam terhadap alur bisnis aplikasi, tidak dapat dideteksi secara '
+              'memadai melalui pendekatan otomatis. Jenis kerentanan tersebut umumnya '
+              'memerlukan pengujian manual oleh profesional keamanan berpengalaman.'],
     ]
 
     for bullet, text in caveats:
@@ -454,53 +489,91 @@ def _disclaimer(elements, st, scan):
         ]], colWidths=[6*mm, 154*mm])
         row.setStyle(TableStyle([
             ('VALIGN',     (0,0), (-1,-1), 'TOP'),
-            ('TOPPADDING', (0,0), (-1,-1), 3),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('TOPPADDING', (0,0), (-1,-1), 2),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
         ]))
         elements.append(row)
 
-    elements.append(Spacer(1, 6))
-    elements.append(Paragraph(
-        '<b>Sangat direkomendasikan</b> agar setiap temuan dalam laporan ini '
-        'diverifikasi secara manual oleh tenaga ahli keamanan (penetration tester) '
-        'sebelum dijadikan dasar tindakan remediasi. Laporan ini bersifat <b>RAHASIA</b> '
-        'dan hanya diperuntukkan bagi pihak yang berwenang atas sistem yang diuji.',
-        st['notice']
-    ))
-
-    elements.append(Spacer(1, 16))
-
-    # ── Ruang Lingkup ─────────────────────────────────────────────────────────
-    elements.append(Paragraph('Target & Ruang Lingkup', st['h2']))
-    elements.append(Paragraph(
-        f'Pemindaian dilakukan terhadap target: <b>{scan.target_url}</b>. '
-        'Pengujian hanya mencakup URL/domain yang ditentukan dan tidak meluas ke '
-        'subdomain, endpoint, atau sistem lain kecuali ditemukan secara otomatis '
-        'dalam proses reconnaissance.',
-        st['notice']
-    ))
-
-    elements.append(Spacer(1, 16))
-
-    # ── Metode & Kategori Pemindaian ──────────────────────────────────────────
-    elements.append(Paragraph('Metode & Kategori Pemindaian', st['h2']))
-    elements.append(Paragraph(
-        'Deep-Scan menjalankan pemindaian otomatis yang mengacu pada kerangka '
-        '<b>OWASP Top 10</b> dan praktik keamanan industri. Berikut adalah '
-        'kategori dan teknik yang digunakan dalam pemindaian ini:',
-        st['notice']
-    ))
     elements.append(Spacer(1, 8))
+
+    notice_closing = (
+        'Mengingat keterbatasan-keterbatasan yang telah disebutkan di atas, <b>sangat '
+        'direkomendasikan</b> agar setiap temuan yang tercantum dalam laporan ini '
+        'diverifikasi dan divalidasi secara manual oleh tenaga ahli keamanan siber atau '
+        '<i>penetration tester</i> yang berkompeten sebelum dijadikan dasar untuk '
+        'pengambilan keputusan remediasi. Tindakan perbaikan sebaiknya diprioritaskan '
+        'berdasarkan tingkat severity, dampak bisnis, serta konteks teknis masing-masing '
+        'temuan.'
+    )
+    elements.append(Paragraph(notice_closing, st['notice']))
+
+    notice_confidential = (
+        'Dokumen ini bersifat <b>RAHASIA</b> (<i>Confidential</i>) dan ditujukan '
+        'secara eksklusif kepada pihak-pihak yang memiliki wewenang dan tanggung jawab '
+        'atas pengelolaan keamanan sistem yang diuji. Penyebarluasan, penggandaan, atau '
+        'penggunaan informasi dalam laporan ini oleh pihak yang tidak berwenang merupakan '
+        'pelanggaran terhadap ketentuan kerahasiaan dan dapat menimbulkan risiko keamanan '
+        'tambahan bagi organisasi terkait.'
+    )
+    elements.append(Paragraph(notice_confidential, st['notice']))
+
+    elements.append(Spacer(1, 14))
+
+    # ── 1.2 Ruang Lingkup ─────────────────────────────────────────────────────
+    elements.append(Paragraph('1.2 Target & Scope', st['h2']))
+
+    scope_p1 = (
+        f'Pemindaian keamanan ini dilakukan terhadap target utama: '
+        f'<b>{scan.target_url}</b>. Ruang lingkup pengujian mencakup seluruh '
+        'URL dan domain utama yang telah ditentukan, termasuk subdomain, endpoint API, '
+        'serta komponen infrastruktur lain yang berhasil diidentifikasi secara otomatis '
+        'melalui proses <i>reconnaissance</i> dan <i>enumeration</i> pada tahap awal '
+        'pemindaian.'
+    )
+    elements.append(Paragraph(scope_p1, st['notice']))
+
+    scope_p2 = (
+        'Pendekatan pemindaian yang digunakan bersifat <i>black-box assessment</i>, di mana '
+        'pengujian dilakukan tanpa akses ke kode sumber, dokumentasi internal, atau '
+        'kredensial autentikasi sistem — kecuali jika secara eksplisit disediakan oleh '
+        'pemilik sistem. Dengan demikian, cakupan pemindaian terbatas pada area yang '
+        'dapat diakses secara publik dan endpoint yang berhasil ditemukan melalui teknik '
+        'enumerasi otomatis. Area yang memerlukan autentikasi atau otorisasi khusus '
+        'mungkin tidak tercakup dalam pemindaian ini.'
+    )
+    elements.append(Paragraph(scope_p2, st['notice']))
+
+    elements.append(Spacer(1, 14))
+
+    # ── 1.3 Metode & Kategori Pemindaian ──────────────────────────────────────
+    elements.append(Paragraph('1.3 Scanning Methods & Categories', st['h2']))
+
+    method_p1 = (
+        'Deep-Scan menjalankan serangkaian modul pemindaian otomatis yang dirancang '
+        'dengan mengacu pada kerangka kerja <b>OWASP Top 10</b> — standar industri yang '
+        'diakui secara global untuk klasifikasi risiko keamanan aplikasi web. Setiap modul '
+        'pemindaian dioptimalkan untuk mendeteksi kategori kerentanan tertentu dengan '
+        'menggunakan kombinasi teknik <i>active probing</i>, analisis respons, dan '
+        '<i>pattern matching</i> terhadap indikator kerentanan yang telah terdokumentasi.'
+    )
+    elements.append(Paragraph(method_p1, st['notice']))
+
+    method_p2 = (
+        'Tabel berikut menyajikan ringkasan kategori pemindaian beserta teknik dan '
+        'sub-modul yang digunakan dalam proses asesmen keamanan ini, disertai dengan '
+        'referensi terhadap standar OWASP yang relevan:'
+    )
+    elements.append(Paragraph(method_p2, st['notice']))
 
     # Header tabel modul
     module_header = [
         Paragraph('<b>No</b>', ParagraphStyle(
             'mh0', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE, alignment=TA_CENTER)),
-        Paragraph('<b>Kategori</b>', ParagraphStyle(
+        Paragraph('<b>Category</b>', ParagraphStyle(
             'mh1', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE)),
-        Paragraph('<b>Teknik / Sub-Modul</b>', ParagraphStyle(
+        Paragraph('<b>Techniques / Sub-Modules</b>', ParagraphStyle(
             'mh2', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE)),
-        Paragraph('<b>Referensi</b>', ParagraphStyle(
+        Paragraph('<b>Reference</b>', ParagraphStyle(
             'mh3', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE)),
     ]
 
@@ -509,17 +582,20 @@ def _disclaimer(elements, st, scan):
          'DNS Lookup, Subdomain Enumeration,\nPort Scanning, Technology Fingerprinting',
          'OWASP A05'],
         ['2', 'HTTP Security\nConfiguration',
-         'Security Headers Analysis (CSP, HSTS,\nX-Frame-Options, X-Content-Type-Options),\n'
+         'Security Headers Analysis (CSP, HSTS,\nX-Frame-Options, X-Content-Type-Options,\n'
+         'Cache-Control, X-XSS-Protection),\n'
          'CORS Misconfiguration Check',
-         'OWASP A05, A02'],
-        ['3', 'Proteksi &\nAutentikasi',
+         'OWASP A05,\nA02'],
+        ['3', 'Authentication\n& Protection',
          'WAF / Cloudflare Detection,\nRate Limiting Check,\nBrute-force Protection Check,\n'
          'Weak Password Indicator Check',
-         'OWASP A07, A02'],
-        ['4', 'Web Vulnerabilities',
-         'SQL Injection (Error-based),\nReflected XSS,\nCommand Injection,\n'
-         'Open Redirect,\nFile Upload Misconfiguration,\nDirectory Listing Enabled',
-         'OWASP A03, A01'],
+         'OWASP A07,\nA02'],
+        ['4', 'Web\nVulnerabilities',
+         'SQL Injection (Error-based, Boolean-based,\nTime-based Blind),\n'
+         'Reflected XSS, Command Injection,\n'
+         'Open Redirect, File Upload Misconfiguration,\n'
+         'Path Traversal, SSRF,\nDirectory Listing Enabled',
+         'OWASP A03,\nA01'],
     ]
 
     rows = [module_header]
@@ -537,7 +613,7 @@ def _disclaimer(elements, st, scan):
                 textColor=C_BLUE_ACC)),
         ])
 
-    mod_t = Table(rows, colWidths=[10*mm, 38*mm, 90*mm, 22*mm])
+    mod_t = Table(rows, colWidths=[10*mm, 32*mm, 92*mm, 26*mm])
     mod_t.setStyle(TableStyle([
         # Header row
         ('BACKGROUND',    (0,0), (-1,0),  C_NAVY),
@@ -549,20 +625,20 @@ def _disclaimer(elements, st, scan):
         ('LINEABOVE',     (0,0), (-1,0),  1,   C_NAVY),
         ('LINEBELOW',     (0,-1),(-1,-1), 1,   C_GRAY_200),
         # Padding
-        ('TOPPADDING',    (0,0), (-1,-1), 7),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 7),
-        ('LEFTPADDING',   (0,0), (-1,-1), 8),
+        ('TOPPADDING',    (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING',   (0,0), (-1,-1), 6),
         ('VALIGN',        (0,0), (-1,-1), 'TOP'),
         ('ALIGN',         (0,0), (0,-1),  'CENTER'),
     ]))
     elements.append(mod_t)
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 8))
 
     # Catatan standar
     elements.append(Paragraph(
-        '<i>Catatan: Standar OWASP Top 10 yang digunakan mengacu pada edisi terbaru. '
-        'Pemindaian bersifat black-box dan tidak menggunakan kredensial akun untuk '
-        'mengakses area yang memerlukan autentikasi kecuali disediakan secara eksplisit.</i>',
+        '<i>Note: OWASP Top 10 standards referenced are based on the latest edition. '
+        'Scanning is performed as a black-box assessment and does not use account credentials '
+        'to access authenticated areas unless explicitly provided.</i>',
         st['small']
     ))
 
@@ -572,7 +648,7 @@ def _disclaimer(elements, st, scan):
 # ── Executive Summary ─────────────────────────────────────────────────────────
 
 def _exec_summary(elements, st, scan, vc, vulnerabilities):
-    elements.append(Paragraph('Ringkasan Eksekutif', st['h1']))
+    elements.append(Paragraph('2. Executive Summary', st['h1']))
     elements.append(HRFlowable(width='100%', thickness=1, color=C_NAVY))
     elements.append(Spacer(1, 10))
 
@@ -612,29 +688,29 @@ def _exec_summary(elements, st, scan, vc, vulnerabilities):
         risk_text = 'Tidak ditemukan kerentanan pada pemindaian ini. Sistem tergolong aman.'
 
     elements.append(Paragraph(risk_text, st['notice']))
-    elements.append(Spacer(1, 14))
+    elements.append(Spacer(1, 12))
 
     # Severity distribution table
-    elements.append(Paragraph('Distribusi Severity', st['h2']))
+    elements.append(Paragraph('2.1 Severity Distribution', st['h2']))
     elements.append(Spacer(1, 6))
 
     sev_header = [
         Paragraph('<b>Severity</b>', ParagraphStyle(
             'sh1', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE, alignment=TA_CENTER)),
-        Paragraph('<b>Jumlah</b>', ParagraphStyle(
+        Paragraph('<b>Count</b>', ParagraphStyle(
             'sh2', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE, alignment=TA_CENTER)),
-        Paragraph('<b>Skor CVSS</b>', ParagraphStyle(
+        Paragraph('<b>CVSS Score</b>', ParagraphStyle(
             'sh3', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE, alignment=TA_CENTER)),
-        Paragraph('<b>Prioritas</b>', ParagraphStyle(
+        Paragraph('<b>Priority</b>', ParagraphStyle(
             'sh4', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE, alignment=TA_CENTER)),
     ]
 
     sev_rows = [sev_header]
     sev_info = [
-        ('Critical', critical, '9.0 – 10.0', 'Segera (< 24 jam)', 'critical'),
-        ('High',     high,     '7.0 – 8.9',  'Prioritas (< 7 hari)', 'high'),
-        ('Medium',   medium,   '4.0 – 6.9',  'Terjadwal (< 30 hari)', 'medium'),
-        ('Low',      low,      '0.1 – 3.9',  'Perencanaan', 'low'),
+        ('Critical', critical, '9.0 – 10.0', 'Immediate (< 24 hours)', 'critical'),
+        ('High',     high,     '7.0 – 8.9',  'Priority (< 7 days)',    'high'),
+        ('Medium',   medium,   '4.0 – 6.9',  'Scheduled (< 30 days)',  'medium'),
+        ('Low',      low,      '0.1 – 3.9',  'Planning',               'low'),
     ]
 
     for label, count, score_range, priority, sev_key in sev_info:
@@ -655,21 +731,21 @@ def _exec_summary(elements, st, scan, vc, vulnerabilities):
         ])
 
     w_page = A4[0]
-    sev_t = Table(sev_rows, colWidths=[35*mm, 25*mm, 40*mm, 50*mm])
+    sev_t = Table(sev_rows, colWidths=[30*mm, 20*mm, 40*mm, 60*mm])
     sev_t.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, 0), C_NAVY),
         ('TEXTCOLOR',     (0, 0), (-1, 0), C_WHITE),
         ('ROWBACKGROUNDS',(0, 1), (-1, -1), [C_WHITE, C_GRAY_100]),
         ('GRID',          (0, 0), (-1, -1), 0.4, C_GRAY_200),
-        ('TOPPADDING',    (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING',    (0, 0), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     elements.append(sev_t)
-    elements.append(Spacer(1, 16))
+    elements.append(Spacer(1, 14))
 
     # Methodology note
-    elements.append(Paragraph('Metodologi Penilaian', st['h2']))
+    elements.append(Paragraph('2.2 Assessment Methodology (CVSS v3.1)', st['h2']))
     elements.append(Paragraph(
         'Penilaian severity setiap kerentanan menggunakan standar '
         '<b>CVSS v3.1 (Common Vulnerability Scoring System)</b> dari FIRST.org. '
@@ -679,6 +755,52 @@ def _exec_summary(elements, st, scan, vc, vulnerabilities):
         'yang dipetakan ke tingkat severity None, Low, Medium, High, atau Critical.',
         st['notice']
     ))
+    elements.append(Spacer(1, 8))
+
+    # CVSS Metrics table
+    cvss_header = [
+        Paragraph('<b>Metric</b>', ParagraphStyle(
+            'ch1', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE)),
+        Paragraph('<b>Code</b>', ParagraphStyle(
+            'ch2', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE, alignment=TA_CENTER)),
+        Paragraph('<b>Description</b>', ParagraphStyle(
+            'ch3', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE)),
+    ]
+
+    cvss_data = [cvss_header]
+    metrics_info = [
+        ('Attack Vector',       'AV', 'Reflects the context by which vulnerability exploitation is possible (Network, Adjacent, Local, Physical).'),
+        ('Attack Complexity',   'AC', 'Describes the conditions beyond the attacker\'s control that must exist to exploit the vulnerability (Low, High).'),
+        ('Privileges Required', 'PR', 'Describes the level of privileges an attacker must possess before exploiting the vulnerability (None, Low, High).'),
+        ('User Interaction',    'UI', 'Captures whether exploitation requires a human user to participate (None, Required).'),
+        ('Scope',               'S',  'Determines whether a vulnerability in one component impacts resources beyond its security scope (Unchanged, Changed).'),
+        ('Confidentiality',     'C',  'Measures the impact to the confidentiality of information managed by the system (None, Low, High).'),
+        ('Integrity',           'I',  'Measures the impact to the integrity of information (None, Low, High).'),
+        ('Availability',        'A',  'Measures the impact to the availability of the affected system (None, Low, High).'),
+    ]
+
+    for name, code, desc in metrics_info:
+        cvss_data.append([
+            Paragraph(f'<b>{name}</b>', ParagraphStyle(
+                f'cm_{code}', fontSize=8, fontName='Helvetica-Bold', textColor=C_GRAY_800)),
+            Paragraph(code, ParagraphStyle(
+                f'cc_{code}', fontSize=8.5, fontName='Courier-Bold', textColor=C_NAVY, alignment=TA_CENTER)),
+            Paragraph(desc, ParagraphStyle(
+                f'cd_{code}', fontSize=8, fontName='Helvetica', textColor=C_GRAY_600, leading=12)),
+        ])
+
+    cvss_t = Table(cvss_data, colWidths=[35*mm, 12*mm, 113*mm])
+    cvss_t.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, 0), C_NAVY_MID),
+        ('TEXTCOLOR',     (0, 0), (-1, 0), C_WHITE),
+        ('ROWBACKGROUNDS',(0, 1), (-1, -1), [C_WHITE, C_GRAY_100]),
+        ('GRID',          (0, 0), (-1, -1), 0.4, C_GRAY_200),
+        ('TOPPADDING',    (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 6),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+    ]))
+    elements.append(cvss_t)
 
     elements.append(PageBreak())
 
@@ -686,13 +808,13 @@ def _exec_summary(elements, st, scan, vc, vulnerabilities):
 # ── Vulnerability Details ─────────────────────────────────────────────────────
 
 def _vulns(elements, st, vulnerabilities):
-    elements.append(Paragraph('Detail Kerentanan', st['h1']))
+    elements.append(Paragraph('3. Vulnerability Details', st['h1']))
     elements.append(HRFlowable(width='100%', thickness=1, color=C_NAVY))
     elements.append(Spacer(1, 10))
 
     if not vulnerabilities:
         elements.append(Paragraph(
-            'Tidak ditemukan kerentanan pada pemindaian ini.', st['body']
+            'No vulnerabilities were identified during this scan.', st['body']
         ))
         elements.append(PageBreak())
         return
@@ -768,9 +890,9 @@ def _vulns(elements, st, vulnerabilities):
             )
 
         rows = [
-            [Paragraph('Kategori',    st['label']),
+            [Paragraph('Category',    st['label']),
              Paragraph(_safe(cat),    st['body'])],
-            [Paragraph('Deskripsi',   st['label']),
+            [Paragraph('Description', st['label']),
              Paragraph(_safe(clean_desc), st['body_j'])],
         ]
 
@@ -796,7 +918,7 @@ def _vulns(elements, st, vulnerabilities):
             ])
 
         rows.append([
-            Paragraph('Rekomendasi', st['label']),
+            Paragraph('Recommendation', st['label']),
             _format_recommendation(v.recommendation, st['body_j']),
         ])
 
@@ -816,7 +938,7 @@ def _vulns(elements, st, vulnerabilities):
             resp_lines = poc_response.strip().splitlines()
             resp_short = '\n'.join(resp_lines[:4])
             if len(resp_lines) > 4:
-                resp_short += f'\n… ({len(resp_lines)-4} baris lainnya)'
+                resp_short += f'\n… ({len(resp_lines)-4} more lines)'
             rows.append([
                 Paragraph('PoC Response', st['label']),
                 _mono_p(resp_short, 400),
@@ -851,18 +973,18 @@ def _vulns(elements, st, vulnerabilities):
 # ── Recon Data ────────────────────────────────────────────────────────────────
 
 def _recon(elements, st, recon_data):
-    elements.append(Paragraph('Data Rekognisi', st['h1']))
+    elements.append(Paragraph('4. Reconnaissance Data', st['h1']))
     elements.append(HRFlowable(width='100%', thickness=1, color=C_NAVY))
     elements.append(Spacer(1, 10))
 
     if not recon_data:
-        elements.append(Paragraph('Tidak ada data rekognisi yang berhasil dikumpulkan.', st['body']))
+        elements.append(Paragraph('No reconnaissance data was collected during this scan.', st['body']))
         return
 
     # Group by category — filter out vulnerability categories
     grouped = {}
     for r in recon_data:
-        cat = _get(r, 'category', 'Umum')
+        cat = _get(r, 'category', 'General')
         # Skip kategori yang sebenarnya vulnerability, bukan recon
         if cat.lower() in _VULN_CATS_EXCLUDE:
             continue
@@ -885,7 +1007,7 @@ def _recon(elements, st, recon_data):
         header_row = [
             Paragraph('<b>Item</b>',   ParagraphStyle(
                 f'rh1_{cat}', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE)),
-            Paragraph('<b>Detail</b>', ParagraphStyle(
+            Paragraph('<b>Details</b>', ParagraphStyle(
                 f'rh2_{cat}', fontSize=8, fontName='Helvetica-Bold', textColor=C_WHITE)),
         ]
         rows = [header_row]
@@ -910,12 +1032,12 @@ def _recon(elements, st, recon_data):
         if hidden_count:
             rows.append([
                 Paragraph(
-                    f'<i>… dan {hidden_count} entri lainnya</i>',
+                    f'<i>… and {hidden_count} more entries</i>',
                     ParagraphStyle(f'rmore_{cat}', fontSize=8, fontName='Helvetica',
                                    textColor=C_GRAY_400, alignment=TA_CENTER)
                 ),
                 Paragraph(
-                    '<i>Lihat hasil pemindaian lengkap di dashboard untuk detail seluruh temuan.</i>',
+                    '<i>See full scan results on the dashboard for complete details.</i>',
                     ParagraphStyle(f'rmored_{cat}', fontSize=8, fontName='Helvetica',
                                    textColor=C_GRAY_400)
                 ),
@@ -945,7 +1067,7 @@ def _recon(elements, st, recon_data):
             ]
         t.setStyle(TableStyle(style_cmds))
         elements.append(t)
-        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 10))
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -986,13 +1108,18 @@ def generate_pdf_report(scan) -> tuple[BytesIO, str]:
         if scan.result.recon_data:
             recon_data = list(scan.result.recon_data)
 
-    _cover(elements, st, scan, vc)
+    has_vulns = len(vulnerabilities) > 0
+    has_recon = len(recon_data) > 0
+
+    _cover(elements)
+    _toc(elements, st, has_vulns, has_recon)
     _disclaimer(elements, st, scan)
     _exec_summary(elements, st, scan, vc, vulnerabilities)
     _vulns(elements, st, vulnerabilities)
     _recon(elements, st, recon_data)
 
-    doc.build(elements, onFirstPage=_hf, onLaterPages=_hf)
+    _on_cover = lambda c, d: _draw_cover(c, d, scan)
+    doc.build(elements, onFirstPage=_on_cover, onLaterPages=_hf)
     buffer.seek(0)
 
     # Nama file: DeepScan_blog.septito.my.id_DS0107_20260413.pdf

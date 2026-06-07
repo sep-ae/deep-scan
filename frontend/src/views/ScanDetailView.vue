@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Separator } from '@/components/ui/separator'
+
 
 import OverviewTab from '@/components/scan/OverviewTab.vue'
 import ReconnaissanceTab from '@/components/scan/ReconnaissanceTab.vue'
@@ -21,8 +23,9 @@ import RecommendationsTab from '@/components/scan/RecommendationsTab.vue'
 import { 
   ArrowLeft, CircleUser, Menu, Package2, Home, Scan, History,
   AlertTriangle, AlertCircle, Info, CheckCircle2,
-  Clock, ExternalLink, FileText
+  Clock, ExternalLink, FileText, LogOut
 } from 'lucide-vue-next'
+
 
 const router = useRouter()
 const route = useRoute()
@@ -32,6 +35,8 @@ const username = ref('Pengguna')
 const scanDetail = ref(null)
 const isLoading = ref(true)
 const activeTab = ref('overview')
+const isMobileMenuOpen = ref(false)
+
 
 const storedUser = localStorage.getItem('user')
 if (storedUser) {
@@ -84,10 +89,11 @@ const overallStatus = computed(() => {
   }
 })
 
-const goToDashboard = () => router.push('/dashboard')
-const goToScan = () => router.push('/scan')
-const goToHistory = () => router.push('/history')
+const goToDashboard = () => { isMobileMenuOpen.value = false; router.push('/dashboard') }
+const goToScan = () => { isMobileMenuOpen.value = false; router.push('/scan') }
+const goToHistory = () => { isMobileMenuOpen.value = false; router.push('/history') }
 const goBack = () => router.push('/history')
+
 
 const handleLogout = () => {
   localStorage.removeItem('token')
@@ -143,33 +149,69 @@ onMounted(() => {
         </a>
       </nav>
 
-      <Sheet>
+      <Sheet v-model:open="isMobileMenuOpen">
         <SheetTrigger as-child>
           <Button variant="outline" size="icon" class="shrink-0 md:hidden">
             <Menu class="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left">
-          <nav class="grid gap-6 text-lg font-medium">
-            <a href="#" class="flex items-center gap-2 text-lg font-semibold">
-              <Package2 class="h-6 w-6" />
-              <span>Deep Scan</span>
-            </a>
-            <a @click="goToDashboard" href="#" class="hover:text-foreground flex items-center gap-2">
-              <Home class="h-5 w-5" />
-              Dashboard
-            </a>
-            <a @click="goToScan" href="#" class="hover:text-foreground flex items-center gap-2">
-              <Scan class="h-5 w-5" />
-              Scan
-            </a>
-            <a @click="goToHistory" href="#" class="hover:text-foreground flex items-center gap-2">
-              <History class="h-5 w-5" />
-              Riwayat
-            </a>
-          </nav>
+        <SheetContent side="left" class="p-0 gap-0">
+          <div class="flex flex-col h-full">
+            <div class="px-6 py-5 bg-white border-b border-neutral-100">
+              <div class="flex items-center gap-3">
+                <div class="h-11 w-11 rounded-2xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
+                  <Package2 class="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <h2 class="text-neutral-900 font-bold text-lg leading-tight">Deep Scan</h2>
+                  <p class="text-neutral-500 text-xs">Security Scanner</p>
+                </div>
+              </div>
+            </div>
+            <nav class="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
+              <p class="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest px-3 mb-3">Menu</p>
+              <a @click="goToDashboard" href="#" :class="[isActive('/dashboard') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/dashboard') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <Home :class="[isActive('/dashboard') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+                </div>
+                Dashboard
+              </a>
+              <a @click="goToScan" href="#" :class="[isActive('/scan') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/scan') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <Scan :class="[isActive('/scan') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+                </div>
+                Scan
+              </a>
+              <a @click="goToHistory" href="#" :class="[isActive('/history') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/history') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <History :class="[isActive('/history') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+                </div>
+                Riwayat
+              </a>
+            </nav>
+            <div class="px-4 pb-5">
+              <Separator class="mb-4" />
+              <div class="flex items-center gap-3 p-3 rounded-2xl bg-neutral-50 border border-neutral-100 mb-3">
+                <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-md">
+                  <span class="text-white font-bold text-sm">{{ username.charAt(0).toUpperCase() }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="font-semibold text-sm text-neutral-900 truncate">{{ username }}</p>
+                  <p class="text-xs text-neutral-500">Deep-Scan User</p>
+                </div>
+              </div>
+              <button @click="handleLogout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 hover:bg-red-50 transition-all duration-200 text-sm font-medium">
+                <div class="h-8 w-8 rounded-lg bg-red-50 flex items-center justify-center">
+                  <LogOut class="h-4 w-4 text-red-500" />
+                </div>
+                Logout
+              </button>
+            </div>
+          </div>
         </SheetContent>
+
       </Sheet>
+
 
       <div class="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
         <div class="ml-auto"></div>
@@ -304,16 +346,17 @@ onMounted(() => {
           </Alert>
 
           <Tabs v-model="activeTab" default-value="overview" class="w-full">
-            <TabsList class="grid w-full grid-cols-4">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="reconnaissance">
-                Reconnaissance ({{ scanDetail.recon_data?.length || 0 }})
+            <TabsList class="grid w-full grid-cols-2 md:grid-cols-4">
+              <TabsTrigger value="overview" class="text-xs md:text-sm">Overview</TabsTrigger>
+              <TabsTrigger value="reconnaissance" class="text-xs md:text-sm">
+                Recon ({{ scanDetail.recon_data?.length || 0 }})
               </TabsTrigger>
-              <TabsTrigger value="vulnerabilities">
-                Vulnerabilities ({{ scanDetail.vulnerabilities?.length || 0 }})
+              <TabsTrigger value="vulnerabilities" class="text-xs md:text-sm">
+                Vuln ({{ scanDetail.vulnerabilities?.length || 0 }})
               </TabsTrigger>
-              <TabsTrigger value="recommendations">Rekomendasi</TabsTrigger>
+              <TabsTrigger value="recommendations" class="text-xs md:text-sm">Rekomendasi</TabsTrigger>
             </TabsList>
+
 
             <TabsContent value="overview" class="mt-4">
               <OverviewTab 

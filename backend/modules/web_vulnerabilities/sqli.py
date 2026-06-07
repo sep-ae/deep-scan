@@ -448,7 +448,6 @@ class SQLInjectionChecker:
                 registered = True
 
         if registered:
-            # ── Tambahan: classify severity & vuln_key ────────────────────────
             vuln_url = f"{url}?{param}={payload}"
             severity = _classify_severity(tag.lower(), matched_db, url)
             parsed   = urlparse(url)
@@ -629,7 +628,6 @@ class SQLInjectionChecker:
                     if registered:
                         _warn(f"SQLi Time-based → param={param} | "
                               f"delay={elapsed:.1f}s Δ+{delta:.1f}s | db={db_hint}")
-                        # ── Tambahan: classify severity & vuln_key ────────────
                         severity = _classify_severity('time-based', db_hint, url)
                         parsed   = urlparse(url)
 

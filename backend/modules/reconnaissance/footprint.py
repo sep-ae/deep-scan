@@ -50,7 +50,6 @@ class TechFingerprint:
     # ── Public API ────────────────────────────────────────────────────────────
 
     def run(self) -> Dict[str, Any]:
-        """Eksekusi pemindaian stack teknologi dan kembalikan hasil deteksi."""
         print(f"[*] Tech Fingerprint: Scanning {self.url} ...")
         self._crawl_endpoints()
 

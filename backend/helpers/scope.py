@@ -1,11 +1,3 @@
-"""
-helpers/scope.py — Domain Scope Filtering
-
-Memastikan scanner hanya menyerang endpoint yang berada
-dalam scope domain target. Mencegah kebocoran injeksi
-ke domain/subdomain lain yang tidak diizinkan.
-"""
-
 from urllib.parse import urlparse
 
 

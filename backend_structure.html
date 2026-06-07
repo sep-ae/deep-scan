@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Struktur Folder Backend - DeepScan</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        body.dark { background: #0d0f1a; }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-light {
+            background: #fff;
+            color: #333;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        .btn-light:hover { background: #f5f5f5; }
+
+        .btn-primary {
+            background: #4f6ef7;
+            color: #fff;
+        }
+        .btn-primary:hover { background: #3d5ce5; }
+
+        /* ─── DIAGRAM ─── */
+        #diagram {
+            background: #ffffff;
+            border: 1px solid #e0e3ea;
+            border-radius: 14px;
+            padding: 40px 48px;
+            max-width: 680px;
+            width: 100%;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+        }
+
+        body.dark #diagram {
+            background: #161929;
+            border-color: #272b42;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+        }
+
+        .title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #1a1d2e;
+            margin-bottom: 4px;
+        }
+        body.dark .title { color: #e8ebf4; }
+
+        .subtitle {
+            font-size: 13px;
+            font-weight: 500;
+            color: #8890ab;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1.5px solid #e8ebf2;
+        }
+        body.dark .subtitle { border-color: #272b42; color: #6b72a0; }
+
+        /* ─── TREE ─── */
+        .tree {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            line-height: 2.1;
+            white-space: pre;
+            color: #64748b;
+        }
+
+        body.dark .tree { color: #8b93b8; }
+
+        .folder {
+            font-weight: 700;
+            color: #4f6ef7;
+        }
+        body.dark .folder { color: #7b9aff; }
+
+        .file {
+            font-weight: 500;
+            color: #475569;
+        }
+        body.dark .file { color: #9098b8; }
+
+        .desc {
+            font-family: 'Inter', sans-serif;
+            font-size: 11.5px;
+            font-style: italic;
+            font-weight: 500;
+            color: #a0a8c4;
+        }
+        body.dark .desc { color: #555d80; }
+
+        .line {
+            color: #d0d5e4;
+        }
+        body.dark .line { color: #2e3350; }
+
+        .footer {
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1.5px solid #e8ebf2;
+            font-size: 11px;
+            color: #a0a8c4;
+            text-align: right;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        body.dark .footer { border-color: #272b42; color: #4a5070; }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: #1a1d2e;
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            opacity: 0;
+            transition: all 0.4s ease;
+            z-index: 999;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <button class="btn btn-light" onclick="toggleTheme()" id="themeBtn">🌙 Dark Mode</button>
+        <button class="btn btn-light" onclick="toggleDesc()" id="descBtn">📝 Sembunyikan Deskripsi</button>
+        <button class="btn btn-primary" onclick="exportPNG()">📥 Download PNG</button>
+    </div>
+
+    <div id="diagram">
+        <div class="title">Struktur Folder Backend</div>
+        <div class="subtitle">Arsitektur modular aplikasi DeepScan — Flask + Python</div>
+        <div class="tree" id="tree"></div>
+        <div class="footer">DeepScan — Web Vulnerability Scanner</div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        const data = [
+            { t:'f', pre:'',          name:'backend',              desc:'' },
+            { t:'f', pre:'├── ',      name:'core/',                desc:'Modul inti pemrosesan' },
+            { t:'p', pre:'│   ├── ',  name:'scanner_engine.py',    desc:'Mesin utama scanner' },
+            { t:'p', pre:'│   ├── ',  name:'phase_runners.py',     desc:'Pengatur fase scanning' },
+            { t:'p', pre:'│   ├── ',  name:'result_processor.py',  desc:'Pemrosesan hasil scan' },
+            { t:'p', pre:'│   └── ',  name:'report_generator.py',  desc:'Generator laporan' },
+            { t:'f', pre:'├── ',      name:'helpers/',             desc:'Fungsi-fungsi utilitas' },
+            { t:'f', pre:'├── ',      name:'modules/',             desc:'Modul-modul scanner' },
+            { t:'f', pre:'│   ├── ',  name:'reconnaissance/',      desc:'Fase reconnaissance' },
+            { t:'f', pre:'│   ├── ',  name:'http_security/',       desc:'Keamanan HTTP' },
+            { t:'f', pre:'│   ├── ',  name:'auth_protection/',     desc:'Proteksi autentikasi' },
+            { t:'f', pre:'│   └── ',  name:'web_vulnerabilities/', desc:'Deteksi kerentanan web' },
+            { t:'f', pre:'├── ',      name:'routes/',              desc:'API endpoints' },
+            { t:'p', pre:'├── ',      name:'app.py',               desc:'Entry point Flask' },
+            { t:'p', pre:'├── ',      name:'config.py',            desc:'Konfigurasi aplikasi' },
+            { t:'p', pre:'└── ',      name:'models.py',            desc:'Model database' },
+        ];
+
+        let showDesc = true;
+
+        function render() {
+            const el = document.getElementById('tree');
+            let html = '';
+            data.forEach(item => {
+                const cls = item.t === 'f' ? 'folder' : 'file';
+                const icon = item.t === 'f' ? '📁 ' : '📄 ';
+                const descText = (showDesc && item.desc) ? `  <span class="desc"># ${item.desc}</span>` : '';
+                html += `<span class="line">${item.pre}</span>${icon}<span class="${cls}">${item.name}</span>${descText}\n`;
+            });
+            el.innerHTML = html;
+        }
+
+        render();
+
+        let isDark = false;
+        function toggleTheme() {
+            isDark = !isDark;
+            document.body.classList.toggle('dark', isDark);
+            document.getElementById('themeBtn').textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+        }
+
+        function toggleDesc() {
+            showDesc = !showDesc;
+            document.getElementById('descBtn').textContent = showDesc ? '📝 Sembunyikan Deskripsi' : '📝 Tampilkan Deskripsi';
+            render();
+        }
+
+        function exportPNG() {
+            const el = document.getElementById('diagram');
+            html2canvas(el, {
+                scale: 3,
+                backgroundColor: null,
+                useCORS: true,
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'struktur_backend_deepscan.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast('✅ Gambar berhasil di-download!');
+            });
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2500);
+        }
+    </script>
+</body>
+</html>

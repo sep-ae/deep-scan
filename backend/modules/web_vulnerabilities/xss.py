@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.spa_crawler import SPACrawler
+from helpers.scope import is_in_scope
 from helpers.parsers import (
     extract_forms,
     extract_all_js_paths,
@@ -181,7 +182,7 @@ class XSSChecker:
             js_text
         ):
             base = api_url.rstrip('/')
-            if base not in self._api_bases:
+            if base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
                 self._api_bases.append(base)
 
     # ── Endpoint discovery ────────────────────────────────────────────────────

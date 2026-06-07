@@ -503,7 +503,6 @@ class FileUploadChecker:
                             file_path, ext, upload_url
                         )
 
-                    # ── Tambahan: classify severity & vuln_key ────────────────
                     severity = _classify_severity(ext, accessible)
                     parsed   = urlparse(upload_url)
 

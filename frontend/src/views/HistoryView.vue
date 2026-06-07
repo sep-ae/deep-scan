@@ -1,4 +1,5 @@
 <script setup>
+
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { toast } from 'vue-sonner'
@@ -13,12 +14,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Separator } from '@/components/ui/separator'
+
 
 import { 
   History, Search, Filter, ChevronLeft, ChevronRight,
   CircleUser, Menu, Package2, Home, Scan as ScanIcon,
-  Shield, AlertTriangle, Clock, ExternalLink, Download, FileText
+  Shield, AlertTriangle, Clock, ExternalLink, Download, FileText, LogOut
 } from 'lucide-vue-next'
+
 
 const router = useRouter()
 const route = useRoute()
@@ -31,6 +35,8 @@ const searchQuery = ref('')
 const statusFilter = ref('all')
 const currentPage = ref(1)
 const itemsPerPage = 10
+const isMobileMenuOpen = ref(false)
+
 const downloadingId = ref(null)
 
 // Get username dari localStorage
@@ -165,10 +171,11 @@ const goToPage = (page) => {
 }
 
 // Navigation functions
-const goToDashboard = () => router.push('/dashboard')
-const goToScan = () => router.push('/scan')
-const goToHistory = () => router.push('/history')
+const goToDashboard = () => { isMobileMenuOpen.value = false; router.push('/dashboard') }
+const goToScan = () => { isMobileMenuOpen.value = false; router.push('/scan') }
+const goToHistory = () => { isMobileMenuOpen.value = false; router.push('/history') }
 const goToDetail = (scanId) => router.push(`/history/${scanId}`)
+
 
 const handleLogout = () => {
   localStorage.removeItem('token')
@@ -256,33 +263,69 @@ onMounted(() => {
       </nav>
 
       <!-- Mobile Menu -->
-      <Sheet>
+      <Sheet v-model:open="isMobileMenuOpen">
         <SheetTrigger as-child>
           <Button variant="outline" size="icon" class="shrink-0 md:hidden">
             <Menu class="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left">
-          <nav class="grid gap-6 text-lg font-medium">
-            <a href="#" class="flex items-center gap-2 text-lg font-semibold">
-              <Package2 class="h-6 w-6" />
-              <span>Deep Scan</span>
-            </a>
-            <a @click="goToDashboard" href="#" class="hover:text-foreground flex items-center gap-2">
-              <Home class="h-5 w-5" />
-              Dashboard
-            </a>
-            <a @click="goToScan" href="#" class="hover:text-foreground flex items-center gap-2">
-              <ScanIcon class="h-5 w-5" />
-              Scan
-            </a>
-            <a @click="goToHistory" href="#" class="hover:text-foreground flex items-center gap-2">
-              <History class="h-5 w-5" />
-              Riwayat
-            </a>
-          </nav>
+        <SheetContent side="left" class="p-0 gap-0">
+          <div class="flex flex-col h-full">
+            <div class="px-6 py-5 bg-white border-b border-neutral-100">
+              <div class="flex items-center gap-3">
+                <div class="h-11 w-11 rounded-2xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
+                  <Package2 class="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <h2 class="text-neutral-900 font-bold text-lg leading-tight">Deep Scan</h2>
+                  <p class="text-neutral-500 text-xs">Security Scanner</p>
+                </div>
+              </div>
+            </div>
+            <nav class="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
+              <p class="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest px-3 mb-3">Menu</p>
+              <a @click="goToDashboard" href="#" :class="[isActive('/dashboard') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/dashboard') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <Home :class="[isActive('/dashboard') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+                </div>
+                Dashboard
+              </a>
+              <a @click="goToScan" href="#" :class="[isActive('/scan') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/scan') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <ScanIcon :class="[isActive('/scan') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+                </div>
+                Scan
+              </a>
+              <a @click="goToHistory" href="#" :class="[isActive('/history') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/history') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <History :class="[isActive('/history') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+                </div>
+                Riwayat
+              </a>
+            </nav>
+            <div class="px-4 pb-5">
+              <Separator class="mb-4" />
+              <div class="flex items-center gap-3 p-3 rounded-2xl bg-neutral-50 border border-neutral-100 mb-3">
+                <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-md">
+                  <span class="text-white font-bold text-sm">{{ username.charAt(0).toUpperCase() }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="font-semibold text-sm text-neutral-900 truncate">{{ username }}</p>
+                  <p class="text-xs text-neutral-500">Deep-Scan User</p>
+                </div>
+              </div>
+              <button @click="handleLogout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 hover:bg-red-50 transition-all duration-200 text-sm font-medium">
+                <div class="h-8 w-8 rounded-lg bg-red-50 flex items-center justify-center">
+                  <LogOut class="h-4 w-4 text-red-500" />
+                </div>
+                Logout
+              </button>
+            </div>
+          </div>
         </SheetContent>
+
       </Sheet>
+
 
       <div class="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
         <div class="ml-auto"></div>
@@ -366,7 +409,7 @@ onMounted(() => {
           </CardContent>
         </Card>
 
-        <!-- Table -->
+        <!-- Data Display -->
         <Card class="border-none shadow-lg">
           <CardContent class="p-0">
             
@@ -376,7 +419,7 @@ onMounted(() => {
             </div>
 
             <!-- Empty State -->
-            <div v-else-if="filteredScans.length === 0" class="text-center py-12">
+            <div v-else-if="filteredScans.length === 0" class="text-center py-12 px-4">
               <History class="h-16 w-16 mx-auto mb-4 text-neutral-300" />
               <h3 class="font-semibold text-lg text-neutral-900 mb-2">
                 {{ searchQuery || statusFilter !== 'all' ? 'Tidak ada hasil' : 'Belum ada riwayat' }}
@@ -389,8 +432,70 @@ onMounted(() => {
               </Button>
             </div>
 
-            <!-- Table -->
-            <Table v-else>
+            <!-- Mobile Card List (visible only on small screens) -->
+            <div v-else class="md:hidden divide-y divide-neutral-100">
+              <div
+                v-for="(scan, index) in paginatedScans"
+                :key="'m-' + scan.scan_id"
+                class="p-4 space-y-3 hover:bg-neutral-50 transition-colors"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
+                    <ExternalLink class="h-4 w-4 text-neutral-400 shrink-0 mt-0.5" />
+                    <span class="font-medium text-neutral-900 text-sm break-all line-clamp-2">
+                      {{ scan.target }}
+                    </span>
+                  </div>
+                  <Badge variant="outline" :class="getScanStatusBadge(scan.status).class + ' shrink-0 text-xs'">
+                    {{ getScanStatusBadge(scan.status).text }}
+                  </Badge>
+                </div>
+
+                <div class="flex items-center flex-wrap gap-2">
+                  <Badge v-if="scan.status === 'completed'" variant="secondary" :class="getStatusBadge(scan.vuln_count).class + ' text-xs'">
+                    {{ getStatusBadge(scan.vuln_count).text }}
+                  </Badge>
+                  <div class="flex items-center gap-1 text-xs text-neutral-500">
+                    <component 
+                      :is="getStatusIcon(scan.vuln_count)" 
+                      class="h-3.5 w-3.5"
+                      :class="scan.vuln_count === 0 ? 'text-green-600' : 'text-red-600'"
+                    />
+                    <span class="font-semibold">{{ scan.vuln_count }}</span>
+                    <span>kerentanan</span>
+                  </div>
+                  <div class="flex items-center gap-1 text-xs text-neutral-500 ml-auto">
+                    <Clock class="h-3.5 w-3.5" />
+                    {{ scan.date }}
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    @click="goToDetail(scan.scan_id)"
+                    class="flex-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-xs h-8"
+                  >
+                    <FileText class="h-3.5 w-3.5 mr-1" />
+                    Detail
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    @click="downloadReport(scan.scan_id)"
+                    :disabled="downloadingId === scan.scan_id"
+                    class="flex-1 text-green-600 hover:text-green-700 hover:bg-green-50 text-xs h-8"
+                  >
+                    <Download class="h-3.5 w-3.5 mr-1" />
+                    {{ downloadingId === scan.scan_id ? 'Processing...' : 'Laporan' }}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Desktop Table (hidden on small screens) -->
+            <Table v-if="filteredScans.length > 0" class="hidden md:table">
               <TableHeader>
                 <TableRow class="bg-neutral-50">
                   <TableHead class="w-12 text-center">#</TableHead>
@@ -477,10 +582,11 @@ onMounted(() => {
           </CardContent>
         </Card>
 
+
         <!-- Pagination -->
         <Card v-if="!isLoading && filteredScans.length > itemsPerPage" class="border-none shadow-lg">
           <CardContent class="py-4">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
               
               <div class="text-sm text-neutral-600">
                 Halaman {{ currentPage }} dari {{ totalPages }}
@@ -494,7 +600,7 @@ onMounted(() => {
                   @click="goToPage(currentPage - 1)"
                 >
                   <ChevronLeft class="h-4 w-4" />
-                  Sebelumnya
+                  <span class="hidden sm:inline">Sebelumnya</span>
                 </Button>
 
                 <div class="flex gap-1">
@@ -516,7 +622,7 @@ onMounted(() => {
                   :disabled="currentPage === totalPages"
                   @click="goToPage(currentPage + 1)"
                 >
-                  Selanjutnya
+                  <span class="hidden sm:inline">Selanjutnya</span>
                   <ChevronRight class="h-4 w-4" />
                 </Button>
               </div>
@@ -524,6 +630,7 @@ onMounted(() => {
             </div>
           </CardContent>
         </Card>
+
 
       </div>
 

@@ -159,4 +159,111 @@ HTTP_PROFILES = {
             "Audit semua endpoint API yang mengembalikan data sensitif."
         ),
     },
+
+    "HEADER_CSP_UNSAFE": {
+        "name": "Content-Security-Policy Contains Unsafe Directives",
+        "category": "HTTP Security Configuration",
+        "metrics": {"av": "N", "ac": "H", "pr": "N", "ui": "R", "s": "U", "c": "L", "i": "L", "a": "N"},
+        "description": (
+            "Header Content-Security-Policy (CSP) ditemukan namun mengandung directive yang "
+            "tidak aman seperti 'unsafe-inline', 'unsafe-eval', atau wildcard (*) pada source "
+            "directive krusial (script-src, default-src). Konfigurasi ini memperlemah "
+            "efektivitas CSP sebagai lapisan pertahanan terhadap serangan XSS. Dengan "
+            "'unsafe-inline', penyerang dapat mengeksekusi script inline yang diinjeksi melalui "
+            "kerentanan XSS. Dengan 'unsafe-eval', fungsi eval() dan konstruktor Function() "
+            "tetap dapat digunakan untuk mengeksekusi kode dinamis."
+        ),
+        "recommendation": (
+            "1) Hapus 'unsafe-inline' dari script-src — gunakan nonce atau hash untuk script inline. "
+            "2) Hapus 'unsafe-eval' — refactor kode yang menggunakan eval() ke pendekatan statis. "
+            "3) Ganti wildcard (*) dengan domain spesifik yang diizinkan. "
+            "4) Gunakan CSP report-uri untuk memonitor pelanggaran sebelum menerapkan strict policy. "
+            "5) Pertimbangkan strict-dynamic untuk kompatibilitas dengan framework JavaScript modern."
+        ),
+    },
+
+    "HEADER_HSTS_WEAK": {
+        "name": "Strict-Transport-Security Misconfigured",
+        "category": "HTTP Security Configuration",
+        "metrics": {"av": "N", "ac": "H", "pr": "N", "ui": "R", "s": "U", "c": "L", "i": "N", "a": "N"},
+        "description": (
+            "Header Strict-Transport-Security (HSTS) ditemukan namun konfigurasinya tidak "
+            "optimal. Nilai max-age terlalu pendek (kurang dari 6 bulan) atau tidak menyertakan "
+            "directive includeSubDomains. HSTS dengan max-age pendek hanya memberikan proteksi "
+            "sementara terhadap serangan SSL stripping — setelah masa berlaku habis, browser "
+            "akan kembali mengizinkan koneksi HTTP biasa sehingga pengguna rentan terhadap "
+            "serangan downgrade di jaringan publik."
+        ),
+        "recommendation": (
+            "1) Tingkatkan max-age minimal ke 15768000 (6 bulan) atau 31536000 (1 tahun). "
+            "2) Tambahkan directive includeSubDomains untuk melindungi seluruh subdomain. "
+            "3) Pertimbangkan menambahkan directive preload dan mendaftarkan domain ke "
+            "HSTS preload list browser (https://hstspreload.org). "
+            "4) Pastikan seluruh resource (gambar, CSS, JS) sudah dimuat melalui HTTPS "
+            "sebelum menerapkan HSTS ketat."
+        ),
+    },
+
+    "HEADER_PERMISSIVE_CACHE": {
+        "name": "Missing or Permissive Cache-Control Header",
+        "category": "HTTP Security Configuration",
+        "metrics": {"av": "N", "ac": "H", "pr": "N", "ui": "N", "s": "U", "c": "L", "i": "N", "a": "N"},
+        "description": (
+            "Header Cache-Control tidak ditemukan atau tidak mengandung directive 'no-store' "
+            "atau 'no-cache'. Tanpa pembatasan caching yang tepat, response HTTP yang berisi "
+            "data sensitif (informasi profil pengguna, token, data transaksi) dapat disimpan "
+            "oleh proxy server, CDN, atau cache browser. Data yang ter-cache dapat diakses oleh "
+            "pengguna lain pada perangkat bersama atau oleh penyerang yang memiliki akses ke "
+            "proxy/cache intermediary."
+        ),
+        "recommendation": (
+            "1) Tambahkan Cache-Control: no-store, no-cache pada response yang berisi data sensitif. "
+            "2) Untuk halaman dinamis: Cache-Control: no-store, no-cache, must-revalidate. "
+            "3) Tambahkan Pragma: no-cache untuk kompatibilitas dengan HTTP/1.0. "
+            "4) Untuk resource statis (CSS, JS, gambar), gunakan caching dengan versioning."
+        ),
+    },
+
+    "CORS_ORIGIN_REFLECTION": {
+        "name": "CORS Origin Reflection Vulnerability",
+        "category": "HTTP Security Configuration",
+        "metrics": {"av": "N", "ac": "L", "pr": "N", "ui": "R", "s": "U", "c": "H", "i": "L", "a": "N"},
+        "description": (
+            "Server memantulkan (reflect) nilai Origin header dari request ke dalam "
+            "Access-Control-Allow-Origin response. Ini berarti server menerima origin apapun "
+            "yang dikirim oleh attacker tanpa validasi. Jika dikombinasikan dengan "
+            "Access-Control-Allow-Credentials: true, penyerang dapat membuat halaman web "
+            "yang melakukan request terautentikasi ke API target dan membaca seluruh response "
+            "(termasuk data pribadi pengguna, session token, dan informasi sensitif lainnya). "
+            "Ini adalah bentuk miskonfigurasi CORS paling berbahaya."
+        ),
+        "recommendation": (
+            "1) Jangan pernah memantulkan nilai Origin header secara langsung ke ACAO response. "
+            "2) Implementasikan whitelist origin yang divalidasi secara ketat di sisi server. "
+            "3) Jangan gunakan regex/suffix matching yang lemah (misal: endsWith(target.com)). "
+            "4) Nonaktifkan Access-Control-Allow-Credentials jika tidak diperlukan. "
+            "5) Audit seluruh middleware/framework CORS yang digunakan untuk memastikan "
+            "tidak ada konfigurasi auto-reflect."
+        ),
+    },
+
+    "CORS_NULL_ORIGIN_ALLOWED": {
+        "name": "CORS Null Origin Accepted",
+        "category": "HTTP Security Configuration",
+        "metrics": {"av": "N", "ac": "L", "pr": "N", "ui": "R", "s": "U", "c": "L", "i": "N", "a": "N"},
+        "description": (
+            "Server menerima request dengan Origin: null dan mengembalikan "
+            "Access-Control-Allow-Origin: null. Origin null dikirim oleh browser dalam "
+            "beberapa kondisi khusus seperti iframe sandboxed, redirect lintas origin, dan "
+            "file lokal (file://). Penyerang dapat memanfaatkan iframe sandboxed untuk membuat "
+            "request cross-origin dari halaman berbahaya dengan origin null dan membaca "
+            "response dari server target."
+        ),
+        "recommendation": (
+            "1) Jangan pernah mengizinkan 'null' sebagai origin yang valid dalam konfigurasi CORS. "
+            "2) Hapus 'null' dari whitelist origin di server. "
+            "3) Pastikan framework CORS tidak mengizinkan null origin secara default. "
+            "4) Validasi bahwa origin selalu berupa URL yang valid (bukan string 'null')."
+        ),
+    },
 }

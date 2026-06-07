@@ -387,8 +387,7 @@ class CommandInjectionChecker:
                 candidates.append(full)
         return candidates
 
-    # ── Injection core ────────────────────────────────────────────────────────
-
+    # Injection core
     def _check_response(self, r, url: str, param: str,
                         payload: str, method: str, results: Dict) -> bool:
         if not r or self._is_cloudflare_page(r.text):
@@ -411,7 +410,6 @@ class CommandInjectionChecker:
                     vuln_url = f"{url}?{param}=127.0.0.1{payload}" \
                                if method != 'POST' else url
 
-                    # ── Tambahan: classify severity & build entry standar ──
                     severity = _classify_severity(url, sig, method, is_time_based=False)
                     parsed   = urlparse(url)
 

@@ -213,6 +213,7 @@ def process_http_security_results(http_results: dict, result_id: int):
     headers_result = http_results.get('headers', {})
     cors_result    = http_results.get('cors', {})
 
+    # ── Headers Processing ───────────────────────────────────────────────────
     if headers_result and not headers_result.get('error'):
         for finding in headers_result.get('findings', []):
             db.session.add(ReconData(
@@ -222,6 +223,22 @@ def process_http_security_results(http_results: dict, result_id: int):
                 details=str(finding)[:500]
             ))
 
+            # Simpan vuln individual per header yang hilang (jika punya vuln_key)
+            vuln_key = finding.get('vuln_key')
+            if vuln_key and not finding.get('present'):
+                _save_vuln_from_profile(vuln_key, result_id, affected=finding['header'])
+
+            # Simpan vuln untuk value issues (misal CSP unsafe-inline, HSTS weak)
+            for vi in finding.get('value_issues', []):
+                vi_key = vi.get('vuln_key')
+                if vi_key:
+                    _save_vuln_from_profile(
+                        vi_key, result_id,
+                        affected=finding['header'],
+                        extra=vi.get('issue', '')
+                    )
+
+        # Tetap simpan vuln generik "Missing Security Headers" untuk ringkasan
         missing_headers = headers_result.get('missing', [])
         if missing_headers:
             _save_vuln_from_profile(
@@ -229,6 +246,7 @@ def process_http_security_results(http_results: dict, result_id: int):
                 affected=', '.join(missing_headers)
             )
 
+    # ── CORS Processing ──────────────────────────────────────────────────────
     if cors_result and not cors_result.get('error'):
         if cors_result.get('cors_headers'):
             db.session.add(ReconData(
@@ -238,12 +256,33 @@ def process_http_security_results(http_results: dict, result_id: int):
                 details=str(cors_result['cors_headers'])[:500]
             ))
 
-        if cors_result.get('issues'):
-            _save_vuln_from_profile(
-                'cors_misconfiguration', result_id,
-                affected='CORS Policy',
-                extra='; '.join(cors_result['issues'])
-            )
+        cors_issues = cors_result.get('issues', [])
+        if cors_issues:
+            # Issues bisa berupa list of dict (format baru) atau list of str (format lama)
+            issue_messages = []
+            best_vuln_key  = 'cors_misconfiguration'
+
+            for issue in cors_issues:
+                if isinstance(issue, dict):
+                    issue_messages.append(issue.get('message', ''))
+                    # Simpan vuln individual per CORS issue (jika punya vuln_key)
+                    i_key = issue.get('vuln_key')
+                    if i_key:
+                        _save_vuln_from_profile(
+                            i_key, result_id,
+                            affected='CORS Policy',
+                            extra=issue.get('message', '')
+                        )
+                else:
+                    issue_messages.append(str(issue))
+
+            # Fallback: simpan vuln generik jika belum ada yang tersimpan
+            if not any(isinstance(i, dict) and i.get('vuln_key') for i in cors_issues):
+                _save_vuln_from_profile(
+                    best_vuln_key, result_id,
+                    affected='CORS Policy',
+                    extra='; '.join(issue_messages)
+                )
 
     db.session.commit()
 
