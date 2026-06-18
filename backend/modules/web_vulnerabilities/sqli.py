@@ -11,10 +11,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.spa_crawler import SPACrawler
-try:
-    from helpers.browser import crawl_spa
-except ImportError:
-    crawl_spa = None
 from helpers.scope import is_in_scope
 from helpers.parsers import (
     is_spa_html, spa_confidence,
@@ -27,10 +23,18 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ── Terminal output helpers ───────────────────────────────────────────────────
 
-def _info(msg: str):  print(f"  [*] {msg}")
-def _ok(msg: str):    print(f"  [+] {msg}")
-def _warn(msg: str):  print(f"  [!] {msg}")
-def _step(n: int, total: int, msg: str): print(f"\n  [{n}/{total}] {msg}")
+import sys as _sys
+
+def _safe_print(msg: str):
+    try:
+        print(msg)
+    except Exception:
+        pass  # Ignore write errors during interpreter shutdown
+
+def _info(msg: str):  _safe_print(f"  [*] {msg}")
+def _ok(msg: str):    _safe_print(f"  [+] {msg}")
+def _warn(msg: str):  _safe_print(f"  [!] {msg}")
+def _step(n: int, total: int, msg: str): _safe_print(f"\n  [{n}/{total}] {msg}")
 
 
 # ── HTTP Headers ──────────────────────────────────────────────────────────────
@@ -143,8 +147,6 @@ DB_ERROR_SIGNATURES = {
     'syntax error':               'Unknown',
 }
 
-# CLOUDFLARE_SIGNATURES sudah dimigrasikan ke helpers/waf_checker.py
-
 TEST_ENDPOINTS = [
     '/search', '/products', '/items', '/users',
     '/profile', '/article', '/news', '/category',
@@ -179,7 +181,7 @@ SEVERITY_VULN_KEY: dict[str, str] = {
 
 _AUTH_PATHS = {'login', 'signin', 'auth', 'oauth', 'callback', 'register', 'admin'}
 
-# Error-based pada db spesifik → HIGH/CRITICAL
+# Error-based pada db spesifik -> HIGH/CRITICAL
 _CRITICAL_DB_ERRORS = {'MySQL', 'PostgreSQL', 'MSSQL', 'Oracle'}
 
 
@@ -209,25 +211,6 @@ def _classify_severity(sqli_type: str, db_type: str, url: str) -> str:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _extract_js_srcs(html: str, base_url: str = '') -> List[str]:
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, 'html.parser')
-    srcs = []
-    for s in soup.find_all('script'):
-        src = s.get('src', '').strip()
-        if src:
-            srcs.append(normalize_url(src, base_url))
-    for link in soup.find_all('link'):
-        rel = link.get('rel', [])
-        rel_str = ' '.join(rel).lower() if isinstance(rel, list) else str(rel).lower()
-        href = link.get('href', '').strip()
-        if 'modulepreload' in rel_str and href and href.endswith(('.js', '.mjs')):
-            srcs.append(normalize_url(href, base_url))
-        if 'preload' in rel_str and link.get('as') == 'script' and href:
-            srcs.append(normalize_url(href, base_url))
-    return list(dict.fromkeys(srcs))
-
-
 def _raw_get(url: str, timeout: int = 8, **kwargs):
     try:
         return _requests.get(url, timeout=timeout, verify=False,
@@ -254,25 +237,26 @@ class SQLInjectionChecker:
     def __init__(
         self,
         url: str,
-        timeout: float = 8.0,
+        timeout: float = 5.0,
         extra_paths: Optional[List[str]] = None,
         cookies: Optional[Dict] = None,
         scope_mode: str = 'wildcard',
+        discovered: Optional[Dict] = None,
     ):
         self.base_url            = url.rstrip('/')
         self.timeout             = int(timeout)
         self.extra_paths         = extra_paths or []
         self.cookies             = cookies or {}
         self.scope_mode          = scope_mode
+        self.discovered          = discovered or {}
         self._found_urls: set    = set()
-        self._is_spa             = False
-        self._waf_detected       = False
-        self._waf_info: Dict     = {}
-        self._api_bases: List    = []
-        self._playwright_cookies = {}
         self._lock               = threading.Lock()
         self._detected_db: str   = 'Unknown'
         self._vuln_found         = threading.Event()
+
+        self._waf_detected       = self.discovered.get('waf_detected', False)
+        self._waf_info           = self.discovered.get('waf_info', {})
+        self._api_bases: List    = self.discovered.get('api_bases', [])
 
         self._client = HttpClient(
             timeout=self.timeout,
@@ -287,137 +271,61 @@ class SQLInjectionChecker:
     def _is_cloudflare_page(self, text: str) -> bool:
         return WAFChecker.is_cloudflare_page(text)
 
-    def _is_real_endpoint(self, r) -> bool:
-        if not r:
-            return False
-        ct = r.headers.get('Content-Type', '').lower()
-        if 'application/json' in ct:
-            return True
-        if self._is_cloudflare_page(r.text):
-            return False
-        if is_spa_html(r.text):
-            return False
-        return True
-
-    def _detect_waf(self) -> bool:
-        waf = WAFChecker(self.base_url, self._client, HEADERS)
-        detected = waf.detect()
-        self._waf_info = waf.get_info()
-        return detected
-
     # ── Endpoint discovery ────────────────────────────────────────────────────
 
-    def _probe_endpoint(self, url: str, active: list):
-        with self._lock:
-            if url in active:
-                return
-        r = self._client.get(url, headers=JSON_HEADERS)
-        if not r or r.status_code in (404, 410):
-            return
-        ct = r.headers.get('Content-Type', '').lower()
-        if 'text/html' in ct and self._is_cloudflare_page(r.text):
-            return
-
-        should_add = False
-        if 'application/json' in ct:
-            should_add = True
-        elif self._waf_detected and r.status_code == 403 \
-                and not self._is_cloudflare_page(r.text):
-            should_add = True
-        elif r.status_code in (200, 201, 405) \
-                and 'text/html' not in ct \
-                and self._is_real_endpoint(r):
-            should_add = True
-
-        if should_add:
-            with self._lock:
-                if url not in active:
-                    active.append(url)
-                    _ok(f"Endpoint ditemukan: {url}")
-
-    def _crawl_js_endpoints(self) -> List[str]:
-        found = []
-        r = self._client.get(self.base_url, headers=HEADERS)
-        if not r:
-            return found
-
-        is_cf      = self._is_cloudflare_page(r.text)
-        confidence = spa_confidence(r.text)
-
-        if confidence >= 2 and not is_cf:
-            self._is_spa = True
-            _info("SPA terdeteksi, crawling dengan Playwright ...")
-            if SPACrawler.is_available():
-                try:
-                    pw_data = crawl_spa(
-                        self.base_url, block_images=True,
-                        initial_cookies=[
-                            {"name": k, "value": v, "url": self.base_url}
-                            for k, v in self.cookies.items()
-                        ] if self.cookies else None,
-                    )
-                    self._playwright_cookies = pw_data.get("cookies", {})
-                    for call in pw_data.get("api_calls", []):
-                        path = call["url"].replace(self.base_url, "").split("?")[0].split("#")[0]
-                        if path and path != "/" and not path.startswith("http"):
-                            found.append(path)
-                    found.extend(extract_all_js_paths(pw_data.get("html", "")))
-                    js_srcs = _extract_js_srcs(pw_data.get("html", ""), self.base_url)
-                    for js_url in js_srcs:
-                        js_r = self._client.get(js_url)
-                        if js_r and js_r.ok:
-                            found.extend(extract_paths_from_js(js_r.text))
-                            self._extract_api_bases(js_r.text)
-                except Exception as e:
-                    _warn(f"Playwright gagal ({e}), fallback ke JS parsing")
-                    self._fallback_js_crawl(r, found)
-            else:
-                _info("Playwright tidak tersedia, fallback ke JS parsing")
-                self._fallback_js_crawl(r, found)
-        else:
-            self._fallback_js_crawl(r, found)
-
-        unique = list(set(found))
-        if self._api_bases:
-            _info(f"External API ditemukan: {', '.join(self._api_bases)}")
-        return unique
-
-    def _fallback_js_crawl(self, r, found: list):
-        js_srcs = _extract_js_srcs(r.text, self.base_url)
-        for js_url in js_srcs:
-            js_r = self._client.get(js_url)
-            if js_r and js_r.ok:
-                found.extend(extract_paths_from_js(js_r.text))
-                self._extract_api_bases(js_r.text)
-        found.extend(extract_all_js_paths(r.text))
-
-    def _extract_api_bases(self, js_text: str):
-        for api_url in re.findall(
-            r'["\`](https?://[a-zA-Z0-9._-]+/api(?:/[a-zA-Z0-9_/-]*)?)["\`]',
-            js_text
-        ):
-            base = api_url.rstrip('/')
-            if base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
-                self._api_bases.append(base)
-
-        for base in re.findall(
-            r'["\`](/api/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)?)["\`]',
-            js_text
-        ):
-            parts = base.strip('/').split('/')
-            if len(parts) >= 2:
-                normalized = '/' + '/'.join(parts[:2])
-                if normalized not in self._api_bases:
-                    self._api_bases.append(normalized)
-
-    def _build_api_endpoints(self) -> List[str]:
-        candidates = []
+    def _get_active_endpoints(self) -> List[str]:
+        active = []
+        for ep in self.discovered.get('endpoints', []):
+            if ep not in active:
+                active.append(ep)
+                
+        # API Candidates
         for base in self._api_bases:
             for suffix in API_SQLI_SUFFIXES:
-                full = (base.rstrip('/') + suffix) if base.startswith('http') \
-                       else (base + suffix)
-                candidates.append(full)
-        return candidates
+                full = (base.rstrip('/') + suffix) if base.startswith('http') else (base + suffix)
+                if full not in active:
+                    active.append(full)
+                    
+        for p in TEST_ENDPOINTS:
+            url = urljoin(self.base_url, p)
+            if url not in active:
+                active.append(url)
+                
+        for path in self.extra_paths:
+            full = normalize_url(path, self.base_url)
+            if full not in active:
+                active.append(full)
+                
+        return list(dict.fromkeys(active))
+
+    # ── Endpoint pre-filter ──────────────────────────────────────────────────
+
+    def _prefilter_endpoints(self, endpoints: List[str]) -> List[str]:
+        """Quick filter: remove endpoints returning 404/410 to avoid wasting time."""
+        live = []
+
+        def _check(url):
+            if self._vuln_found.is_set():
+                return None
+            try:
+                r = _raw_get(url, timeout=4, headers=HEADERS)
+                if r and r.status_code not in (404, 410):
+                    return url
+            except Exception:
+                pass
+            return None
+
+        with ThreadPoolExecutor(max_workers=15) as ex:
+            futures = [ex.submit(_check, url) for url in endpoints]
+            for f in as_completed(futures):
+                try:
+                    result = f.result()
+                    if result:
+                        live.append(result)
+                except Exception:
+                    pass
+
+        return live
 
     # ── Core check helpers ────────────────────────────────────────────────────
 
@@ -452,7 +360,7 @@ class SQLInjectionChecker:
             severity = _classify_severity(tag.lower(), matched_db, url)
             parsed   = urlparse(url)
 
-            _warn(f"SQLi {tag} [{severity}] → param={param} | db={matched_db} | status={status}")
+            _warn(f"SQLi {tag} [{severity}] -> param={param} | db={matched_db} | status={status}")
             with self._lock:
                 results['vulnerable_paths'].append({
                     'url':          vuln_url,
@@ -477,35 +385,49 @@ class SQLInjectionChecker:
     # ── Error-based ───────────────────────────────────────────────────────────
 
     def _error_based(self, url: str, param: str, results: Dict) -> bool:
+        response_sigs = []  # Track (status, body_len) for smart skip
         for payload in ERROR_PAYLOADS:
+            if self._vuln_found.is_set():
+                return False
             with self._lock:
                 results['total_tested'] += 1
             r = _raw_get(f"{url}?{param}={_enc(payload)}",
                          timeout=self.timeout, headers=JSON_HEADERS)
-            if not r or self._is_cloudflare_page(r.text):
+            if not r:
                 continue
-            ct = r.headers.get('Content-Type', '').lower()
-            if 'text/html' in ct and 'json' not in ct and r.status_code != 500:
-                continue
+            if self._is_cloudflare_page(r.text):
+                return False  # WAF blocks -> skip remaining payloads
+            
             if self._check_sqli_body(r.text, url, param, payload,
                                      r.status_code, results, 'Error-based'):
                 return True
+
+            # Smart skip: if first 3 responses are nearly identical,
+            # the endpoint doesn't process this param -> skip rest
+            response_sigs.append((r.status_code, len(r.text)))
+            if len(response_sigs) == 3:
+                statuses = {s for s, _ in response_sigs}
+                lengths = [l for _, l in response_sigs]
+                if len(statuses) == 1 and (max(lengths) - min(lengths)) < 50:
+                    return False
         return False
 
     # ── Boolean-based ─────────────────────────────────────────────────────────
 
     def _boolean_based(self, url: str, param: str, results: Dict) -> bool:
+        if self._vuln_found.is_set():
+            return False
         try:
             r_empty = _raw_get(f"{url}?{param}=XNOTEXISTX999",
                                timeout=self.timeout, headers=JSON_HEADERS)
             if not r_empty or self._is_cloudflare_page(r_empty.text):
                 return False
-            ct = r_empty.headers.get('Content-Type', '').lower()
-            if 'text/html' in ct and 'json' not in ct:
-                return False
+                
             empty_len = len(r_empty.text)
 
             for true_p, false_p in BOOL_PAIRS:
+                if self._vuln_found.is_set():
+                    return False
                 with self._lock:
                     results['total_tested'] += 2
 
@@ -539,10 +461,9 @@ class SQLInjectionChecker:
                             self._found_urls.add(key)
                             registered = True
                     if registered:
-                        _warn(f"SQLi Boolean-based → param={param} | "
+                        _warn(f"SQLi Boolean-based -> param={param} | "
                               f"true={len_true}b empty={empty_len}b ratio={ratio:.1f}x")
                         db       = results.get('db_type') or self._detected_db or 'Unknown'
-                        # ── Tambahan: classify severity & vuln_key ────────────
                         severity = _classify_severity('boolean-based', db, url)
                         parsed   = urlparse(url)
 
@@ -588,27 +509,23 @@ class SQLInjectionChecker:
     # ── Time-based ────────────────────────────────────────────────────────────
 
     def _time_based(self, url: str, param: str, results: Dict) -> bool:
-        baselines = []
-        for _ in range(3):
-            try:
-                t0 = time.time()
-                _raw_get(f"{url}?{param}=normalquery",
-                         timeout=12, headers=JSON_HEADERS)
-                baselines.append(time.time() - t0)
-            except Exception:
-                pass
-
-        if not baselines:
+        if self._vuln_found.is_set():
             return False
-
-        baselines.sort()
-        baseline = baselines[len(baselines) // 2]
-        baseline = max(baseline, 0.3)
+        # Single baseline measurement (reduced from 3 to speed up scan)
+        try:
+            t0 = time.time()
+            _raw_get(f"{url}?{param}=normalquery",
+                     timeout=8, headers=JSON_HEADERS)
+            baseline = max(time.time() - t0, 0.3)
+        except Exception:
+            return False
 
         detected_db    = self._detected_db or 'Unknown'
         payloads_to_try = TIME_PAYLOADS_ALL.get(detected_db, TIME_PAYLOADS_ALL['Unknown'])
 
         for payload, db_hint in payloads_to_try:
+            if self._vuln_found.is_set():
+                return False
             with self._lock:
                 results['total_tested'] += 1
             try:
@@ -626,7 +543,7 @@ class SQLInjectionChecker:
                             self._found_urls.add(key)
                             registered = True
                     if registered:
-                        _warn(f"SQLi Time-based → param={param} | "
+                        _warn(f"SQLi Time-based -> param={param} | "
                               f"delay={elapsed:.1f}s Δ+{delta:.1f}s | db={db_hint}")
                         severity = _classify_severity('time-based', db_hint, url)
                         parsed   = urlparse(url)
@@ -661,7 +578,7 @@ class SQLInjectionChecker:
                         self._found_urls.add(key)
                         registered = True
                 if registered:
-                    _warn(f"SQLi Time-based (timeout >20s) → param={param} | db={db_hint}")
+                    _warn(f"SQLi Time-based (timeout >20s) -> param={param} | db={db_hint}")
                     severity = _classify_severity('time-based', db_hint, url)
                     parsed   = urlparse(url)
 
@@ -694,22 +611,65 @@ class SQLInjectionChecker:
     # ── Scan per endpoint ─────────────────────────────────────────────────────
 
     def _scan_endpoint(self, url: str, results: Dict):
-        for param in TEST_PARAMS:
+        if self._vuln_found.is_set():
+            return
+
+        # Quick probe: check if endpoint processes query params at all
+        # If response is identical with/without a random param, skip it
+        try:
+            r_bare  = _raw_get(url, timeout=4, headers=JSON_HEADERS)
+            r_probe = _raw_get(f"{url}?__dsProbe__=xyz123", timeout=4, headers=JSON_HEADERS)
+            if (r_bare and r_probe
+                    and r_bare.status_code == r_probe.status_code
+                    and abs(len(r_bare.text) - len(r_probe.text)) < 30):
+                # Endpoint returns identical response -> likely SPA/static/catch-all
+                # Only test top 3 most common injectable params
+                all_params = list(dict.fromkeys(
+                    TEST_PARAMS + self.discovered.get('params', [])
+                ))[:3]
+            else:
+                all_params = list(dict.fromkeys(
+                    TEST_PARAMS + self.discovered.get('params', [])
+                ))
+        except Exception:
+            all_params = list(dict.fromkeys(
+                TEST_PARAMS + self.discovered.get('params', [])
+            ))
+
+        def _test_param(param):
             if self._vuln_found.is_set():
                 return
-            err = self._error_based(url, param, results)
-            if err:
+            if self._error_based(url, param, results):
                 self._vuln_found.set()
+                return
+            if self._vuln_found.is_set():
                 return
             if self._boolean_based(url, param, results):
                 self._vuln_found.set()
                 return
 
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            futures = [ex.submit(_test_param, p) for p in all_params]
+            for f in as_completed(futures):
+                if self._vuln_found.is_set():
+                    for rem in futures:
+                        rem.cancel()
+                    break
+                try:
+                    f.result()
+                except HostDeadException:
+                    for rem in futures:
+                        rem.cancel()
+                    raise
+                except Exception:
+                    pass
+
     def _scan_forms(self, results: Dict):
-        r_main = self._client.get(self.base_url, headers=JSON_HEADERS)
-        if not r_main or not r_main.ok or self._is_cloudflare_page(r_main.text):
+        forms = self.discovered.get('forms', [])
+        if not forms:
             return
-        for form in extract_forms(r_main.text, self.base_url):
+            
+        for form in forms:
             for inp in form['inputs']:
                 param  = inp['name']
                 action = form['action']
@@ -724,9 +684,7 @@ class SQLInjectionChecker:
                                      timeout=self.timeout, headers=JSON_HEADERS)
                     if not r or self._is_cloudflare_page(r.text):
                         continue
-                    ct = r.headers.get('Content-Type', '').lower()
-                    if 'text/html' in ct and 'json' not in ct and r.status_code != 500:
-                        continue
+                    
                     if self._check_sqli_body(r.text, action, param, payload,
                                              r.status_code, results,
                                              'Error-based (form)'):
@@ -743,64 +701,22 @@ class SQLInjectionChecker:
             'findings':         [],
             'error':            None,
             'summary':          {},         
-            'waf_detected':     False,
-            'spa_detected':     False,
-            'playwright_used':  False,
+            'waf_detected':     self._waf_detected,
         }
 
         try:
-            self._waf_detected      = self._detect_waf()
-            results['waf_detected'] = self._waf_detected
             results['waf_info']     = self._waf_info
-            waf_name   = self._waf_info.get('waf_name', '?')
-            waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
-            pw_status  = "tersedia" if SPACrawler.is_available() else "tidak tersedia"
-            _info(f"WAF: {waf_status} | Playwright: {pw_status}")
+            
+            _step(1, 4, "Mengumpulkan endpoint ...")
+            raw_endpoints = self._get_active_endpoints()
+            _info(f"Total {len(raw_endpoints)} endpoint kandidat")
 
-            _step(1, 3, "Mengumpulkan endpoint ...")
-            active_endpoints = []
+            _step(2, 4, "Pre-filter endpoint (skip 404) ...")
+            active_endpoints = self._prefilter_endpoints(raw_endpoints)
+            _info(f"{len(active_endpoints)} endpoint aktif (dari {len(raw_endpoints)} kandidat)")
 
-            if self.extra_paths:
-                for path in self.extra_paths:
-                    full = normalize_url(path, self.base_url)
-                    with self._lock:
-                        if full not in active_endpoints:
-                            active_endpoints.append(full)
-                            _ok(f"Extra path: {full}")
-
-            with ThreadPoolExecutor(max_workers=15) as ex:
-                futures = [
-                    ex.submit(self._probe_endpoint,
-                              urljoin(self.base_url, p), active_endpoints)
-                    for p in TEST_ENDPOINTS
-                ]
-                for f in as_completed(futures):
-                    try: f.result()
-                    except HostDeadException: raise
-                    except Exception: pass
-
-            js_paths = self._crawl_js_endpoints()
-            results['spa_detected']    = self._is_spa
-            results['playwright_used'] = SPACrawler.is_available() and self._is_spa
-
-            api_candidates = self._build_api_endpoints()
-            with ThreadPoolExecutor(max_workers=15) as ex:
-                futures = [
-                    ex.submit(self._probe_endpoint, p, active_endpoints)
-                    if p.startswith('http') else
-                    ex.submit(self._probe_endpoint,
-                              urljoin(self.base_url, p), active_endpoints)
-                    for p in js_paths + api_candidates
-                ]
-                for f in as_completed(futures):
-                    try: f.result()
-                    except HostDeadException: raise
-                    except Exception: pass
-
-            _info(f"Total {len(active_endpoints)} endpoint aktif")
-
-            _step(2, 3, "Error-based & Boolean-based scan ...")
-            with ThreadPoolExecutor(max_workers=5) as ex:
+            _step(3, 4, "Error-based & Boolean-based scan ...")
+            with ThreadPoolExecutor(max_workers=10) as ex:
                 futures = [
                     ex.submit(self._scan_endpoint, url, results)
                     for url in active_endpoints
@@ -814,16 +730,21 @@ class SQLInjectionChecker:
                     except Exception: pass
 
             if not results['vulnerable_paths']:
-                _step(3, 3, "Time-based scan ...")
-                for url in active_endpoints:
+                _step(4, 4, "Time-based scan ...")
+                all_params = list(dict.fromkeys(TEST_PARAMS + self.discovered.get('params', [])))
+                time_endpoints = active_endpoints[:10]  # Limit to top 10 endpoints
+                _info(f"Time-based: {len(time_endpoints)} endpoint × {min(len(all_params), 3)} param")
+                for url in time_endpoints:
                     found = False
-                    for param in TEST_PARAMS[:5]:
-                        if found:
+                    for param in all_params[:3]:  # Top 3 params only
+                        if found or self._vuln_found.is_set():
                             break
                         if self._time_based(url, param, results):
                             found = True
+                    if self._vuln_found.is_set():
+                        break
             else:
-                _step(3, 3, "Time-based dilewati (sudah ada temuan)")
+                _step(4, 4, "Time-based dilewati (sudah ada temuan)")
 
             self._scan_forms(results)
 

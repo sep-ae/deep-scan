@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapping OWASP Top 10:2025 - Deep-Scan</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-light: #EEF2FF;
+            --text-main: #1F2937;
+            --text-muted: #6B7280;
+            --bg-body: #F9FAFB;
+            --bg-table: #FFFFFF;
+            --border-color: #E5E7EB;
+            --success: #10B981;
+            --danger: #EF4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.2rem;
+            color: var(--primary);
+            margin-bottom: 10px;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .table-container {
+            background-color: var(--bg-table);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: var(--primary-light);
+            color: var(--primary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background-color: #F8FAFC;
+        }
+
+        td {
+            font-size: 0.95rem;
+            vertical-align: top;
+        }
+
+        /* Number Column */
+        td:nth-child(1) {
+            font-weight: 600;
+            color: var(--text-muted);
+            width: 5%;
+            text-align: center;
+        }
+
+        /* OWASP Category */
+        td:nth-child(2) {
+            font-weight: 600;
+            width: 25%;
+            color: var(--text-main);
+        }
+
+        /* Module Tags */
+        td:nth-child(3) {
+            width: 25%;
+        }
+
+        /* Justification */
+        td:nth-child(4) {
+            width: 45%;
+            color: var(--text-muted);
+        }
+
+        .module-tag {
+            display: inline-block;
+            background-color: var(--primary-light);
+            color: var(--primary);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            margin-right: 4px;
+            border: 1px solid rgba(79, 70, 229, 0.2);
+        }
+
+        .module-tag-auth {
+            background-color: #FEF2F2;
+            color: #DC2626;
+            border-color: rgba(220, 38, 38, 0.2);
+        }
+
+        .module-tag-http {
+            background-color: #F0FDF4;
+            color: #16A34A;
+            border-color: rgba(22, 163, 74, 0.2);
+        }
+
+        .status-covered {
+            color: var(--success);
+            font-weight: 700;
+        }
+
+        .status-out {
+            color: var(--danger);
+            font-style: italic;
+            font-size: 0.85rem;
+        }
+
+        .legend {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .legend span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-box {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        @media (max-width: 768px) {
+            th, td {
+                padding: 12px 15px;
+            }
+            .header h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Mapping Kerentanan Deep-Scan</h1>
+        <p>Keselarasan seluruh modul pemindai kerentanan web Deep-Scan dengan standar industri global <strong>OWASP Top 10 (2025)</strong>.</p>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>No</th>
+                    <th>Kategori OWASP (2025)</th>
+                    <th>Modul Deep-Scan</th>
+                    <th>Justifikasi & Keterangan</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1</td>
+                    <td>A01:2025 - Broken Access Control</td>
+                    <td>
+                        <span class="module-tag">open_redirect.py</span>
+                        <span class="module-tag">file_upload.py</span>
+                        <span class="module-tag module-tag-http">cors_checker.py</span>
+                    </td>
+                    <td>Kegagalan membatasi akses (CORS misconfig, Open Redirect) dan tipe file yang diunggah pengguna berakar dari lemahnya kontrol hak akses.</td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td>A02:2025 - Security Misconfiguration</td>
+                    <td>
+                        <span class="module-tag">directory_listing.py</span>
+                        <span class="module-tag module-tag-http">security_headers.py</span>
+                        <span class="module-tag module-tag-http">cors_checker.py</span>
+                        <span class="module-tag module-tag-auth">rate_limit_checker.py</span>
+                    </td>
+                    <td>Mendeteksi konfigurasi web server yang salah, header keamanan yang hilang (HSTS, CSP), kebijakan CORS yang terlalu longgar, serta tidak adanya pembatasan *rate limit*.</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>A03:2025 - Software Supply Chain Failures</td>
+                    <td><span class="status-out">Di luar cakupan</span></td>
+                    <td>Berkaitan dengan rantai pasok software dan pihak ketiga yang sulit dideteksi secara pasif dari luar.</td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td>A04:2025 - Cryptographic Failures</td>
+                    <td>
+                        <span class="module-tag module-tag-http">security_headers.py</span>
+                    </td>
+                    <td>Pengecekan *Strict-Transport-Security* (HSTS) memastikan aplikasi menggunakan enkripsi transit yang aman untuk mencegah *downgrade attack*.</td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>A05:2025 - Injection</td>
+                    <td>
+                        <span class="module-tag">xss.py</span>
+                        <span class="module-tag">sqli.py</span>
+                        <span class="module-tag">command_injection.py</span>
+                    </td>
+                    <td>Fokus utama sistem: Mendeteksi injeksi script (XSS), manipulasi basis data (SQLi), dan eksekusi perintah sistem operasi (RCE) secara dinamis.</td>
+                </tr>
+                <tr>
+                    <td>6</td>
+                    <td>A06:2025 - Insecure Design</td>
+                    <td>
+                        <span class="module-tag">open_redirect.py</span>
+                        <span class="module-tag">file_upload.py</span>
+                    </td>
+                    <td>Open Redirect dan pengunggahan file berbahaya sering terjadi karena cacat arsitektur dan desain logika aplikasi yang tidak aman sejak awal.</td>
+                </tr>
+                <tr>
+                    <td>7</td>
+                    <td>A07:2025 - Authentication Failures</td>
+                    <td>
+                        <span class="module-tag module-tag-auth">login_security_checker.py</span>
+                        <span class="module-tag module-tag-auth">rate_limit_checker.py</span>
+                    </td>
+                    <td>Memeriksa kelemahan keamanan pada form *login*, tidak adanya perlindungan dari *brute-force*, dan absennya mekanisme *rate limiting* pada autentikasi.</td>
+                </tr>
+                <tr>
+                    <td>8</td>
+                    <td>A08:2025 - Software or Data Integrity Failures</td>
+                    <td><span class="status-out">Di luar cakupan</span></td>
+                    <td>Berkaitan dengan pembaruan software tanpa verifikasi integritas, yang sulit diuji black-box otomatis.</td>
+                </tr>
+                <tr>
+                    <td>9</td>
+                    <td>A09:2025 - Security Logging and Alerting Failures</td>
+                    <td><span class="status-out">Di luar cakupan</span></td>
+                    <td>Merupakan kelemahan operasional server backend yang tidak dapat dipindai dari sisi client.</td>
+                </tr>
+                <tr>
+                    <td>10</td>
+                    <td>A10:2025 - Mishandling of Exceptional Conditions</td>
+                    <td><span class="status-out">Di luar cakupan</span></td>
+                    <td>Menganalisis bagaimana aplikasi menangani dan menampilkan error, memerlukan deteksi khusus pada pesan error sistem secara internal.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="legend">
+        <span><div class="legend-box" style="background-color: var(--primary-light); border: 1px solid rgba(79, 70, 229, 0.2);"></div> Web Vulnerabilities</span>
+        <span><div class="legend-box" style="background-color: #F0FDF4; border: 1px solid rgba(22, 163, 74, 0.2);"></div> HTTP Security</span>
+        <span><div class="legend-box" style="background-color: #FEF2F2; border: 1px solid rgba(220, 38, 38, 0.2);"></div> Auth Protection</span>
+    </div>
+</div>
+
+</body>
+</html>

@@ -145,7 +145,7 @@ class DNSLookup:
         """
         CAA (Certification Authority Authorization) — record yang menentukan
         CA mana yang boleh menerbitkan SSL cert untuk domain ini.
-        Tidak ada CAA = siapapun bisa issue cert → risiko keamanan.
+        Tidak ada CAA = siapapun bisa issue cert -> risiko keamanan.
         """
         try:
             r = self._resolver(timeout)
@@ -377,7 +377,7 @@ class DNSLookup:
 
     def _detect_ns_provider(self, ns_servers: List[str]) -> str:
         """
-        Fix: 'aws.com' tidak ada di NS record AWS → pakai 'awsdns'.
+        Fix: 'aws.com' tidak ada di NS record AWS -> pakai 'awsdns'.
         """
         providers = {
             'cloudflare.com':   'Cloudflare',

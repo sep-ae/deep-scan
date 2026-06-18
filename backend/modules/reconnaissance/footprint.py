@@ -15,11 +15,12 @@ class TechFingerprint:
     Modul fingerprinting teknologi web.
 
     Mendeteksi stack teknologi target melalui beberapa teknik:
-    - Favicon hash matching (bypass CDN/WAF)
+    - Favicon hash matching dengan cross-validation
     - Config file mining (composer.json, package.json)
     - HTTP header analysis (Server, X-Powered-By, Set-Cookie)
     - HTML content pattern matching (meta generator, script src, inline markers)
     - Cookie-based framework identification
+    - SPA fallback detection untuk menghindari false positive
     """
 
     def __init__(self, url: str, timeout: float = 10.0, max_endpoints: int = 10):
@@ -33,6 +34,10 @@ class TechFingerprint:
         self._cached_content: Optional[str] = None
         self._cached_headers: Optional[str] = None
         self._cached_cookies: Optional[Dict[str, str]] = None
+        self._cached_homepage_content: Optional[str] = None
+
+        # Fingerprint homepage untuk SPA fallback detection
+        self._homepage_fingerprint: Optional[str] = None
 
         self.session = requests.Session()
         self.session.headers.update({
@@ -66,6 +71,7 @@ class TechFingerprint:
             'frontend_framework':  self._detect_frontend_framework(),
             'javascript_libs':     self._detect_js_libs(),
             'css_frameworks':      self._detect_css_frameworks(),
+            'build_tools':         self._detect_build_tools(),
             'cdn':                 self._detect_cdn(),
             'security':            self._detect_security(),
             'analytics':           self._detect_analytics(),
@@ -117,10 +123,50 @@ class TechFingerprint:
                     'raw_content': resp.content,
                     'cookies': resp.cookies.get_dict(),
                 })
+
+                # Simpan fingerprint homepage untuk SPA fallback detection
+                if path == '' and resp.status_code == 200:
+                    self._homepage_fingerprint = self._compute_content_fingerprint(content_text)
+
             except requests.RequestException:
                 continue
 
     # ── Helpers (dengan cache) ────────────────────────────────────────────────
+
+    def _compute_content_fingerprint(self, content: str) -> str:
+        """Buat fingerprint singkat dari konten untuk perbandingan SPA fallback."""
+        # Ambil <title> dan beberapa marker kunci, bukan seluruh konten
+        title_match = re.search(r'<title[^>]*>(.*?)</title>', content, re.IGNORECASE | re.DOTALL)
+        title = title_match.group(1).strip() if title_match else ''
+        # Hash dari bagian body yang signifikan
+        body_match = re.search(r'<body[^>]*>(.*?)</body>', content, re.IGNORECASE | re.DOTALL)
+        body_snippet = (body_match.group(1)[:500] if body_match else content[:500]).strip()
+        return hashlib.md5(f"{title}|{body_snippet}".encode()).hexdigest()
+
+    def _is_spa_fallback(self, response: Dict[str, Any]) -> bool:
+        """
+        Cek apakah response dari non-root endpoint adalah SPA fallback
+        (halaman yang sama persis dengan homepage, bukan konten asli endpoint).
+        """
+        if not self._homepage_fingerprint:
+            return False
+        if response['path'] == '':
+            return False
+        if response['status'] != 200:
+            return False
+        fp = self._compute_content_fingerprint(response['content'])
+        return fp == self._homepage_fingerprint
+
+    def _get_homepage_content(self) -> str:
+        """Ambil konten hanya dari homepage (root endpoint)."""
+        if self._cached_homepage_content is None:
+            for r in self.all_responses:
+                if r['path'] == '' and r['status'] == 200:
+                    self._cached_homepage_content = r['content']
+                    break
+            if self._cached_homepage_content is None:
+                self._cached_homepage_content = ''
+        return self._cached_homepage_content
 
     def _get_combined_content(self) -> str:
         if self._cached_content is None:
@@ -158,41 +204,127 @@ class TechFingerprint:
                     return val
         return None
 
+    def _get_content_type(self, response: Dict[str, Any]) -> str:
+        """Ambil content-type dari response headers."""
+        return response['headers'].get('content-type', '').lower()
+
     # ── Detection Modules ─────────────────────────────────────────────────────
 
     def _detect_favicon_framework(self) -> Optional[str]:
-        """Deteksi framework melalui MD5 hash favicon.ico."""
+        """
+        Deteksi framework melalui MD5 hash favicon.ico.
+        Cross-validate dengan konten homepage untuk menghindari false positive
+        dari CDN/WAF yang menyajikan favicon default atau cached.
+        """
         for r in self.all_responses:
-            if 'favicon.ico' in r['url'] and r['status'] == 200:
-                try:
-                    md5_hash = hashlib.md5(r['raw_content']).hexdigest()
+            if 'favicon.ico' not in r['url'] or r['status'] != 200:
+                continue
 
-                    signatures = {
-                        # PHP Frameworks
-                        '69c728902a9f997cb956c36798a28796': 'Laravel',
-                        'd41d8cd98f00b204e9800998ecf8427e': 'Empty Favicon',
-                        # Java
-                        '050519992d9d924cb956c36798a28796': 'Spring Boot',
-                        # JavaScript Frameworks
-                        '88081f2150495f327e573715694a1131': 'React (Create React App)',
-                        'e3ee45445209c15858604928b577005c': 'Vue.js (Vue CLI)',
-                        '20e8b153b6f937d53243f7736f875323': 'Angular',
-                        # CMS
-                        '06e3917a2bf1cf76dc1b73a51297dd9e': 'WordPress',
-                        '3e4b418ff5e58b5138e0f786a6e2f701': 'Joomla',
-                        # Platforms
-                        'f3415a6e29783f9828236780360a0494': 'Docker Default',
-                        '1ba2ae710d927f13d483fd5d1e548c9b': 'Grafana',
-                        '2b7e5e94cda6ce76cf5c7a47a6d5e95f': 'GitLab',
-                        'a61e09aafa53a953f7e530bf0b0c0cfe': 'Jenkins',
-                        '4c80c80bec80e3f5b3c1aca4efb8de9a': 'Kibana',
-                    }
+            content_type = self._get_content_type(r)
+            # Pastikan response benar-benar favicon/image, bukan HTML fallback
+            if content_type and 'html' in content_type:
+                continue
 
-                    result = signatures.get(md5_hash)
-                    if result:
-                        return f"{result} (favicon: {md5_hash[:12]})"
-                except (ValueError, TypeError):
-                    pass
+            # Skip jika ukuran terlalu kecil (empty/invalid) atau terlalu besar (bukan favicon)
+            raw_size = len(r['raw_content'])
+            if raw_size < 100 or raw_size > 500_000:
+                continue
+
+            try:
+                md5_hash = hashlib.md5(r['raw_content']).hexdigest()
+
+                # Signatures dengan cross-validation markers
+                # Format: hash -> (name, [homepage_markers_for_validation])
+                signatures = {
+                    # PHP Frameworks
+                    '69c728902a9f997cb956c36798a28796': (
+                        'Laravel',
+                        ['laravel', 'csrf-token', 'app.js']
+                    ),
+                    'd41d8cd98f00b204e9800998ecf8427e': (
+                        'Empty Favicon',
+                        []  # Tidak perlu validasi, selalu benar
+                    ),
+                    # Java
+                    '050519992d9d924cb956c36798a28796': (
+                        'Spring Boot',
+                        ['spring', 'whitelabel']
+                    ),
+                    # JavaScript Frameworks
+                    '88081f2150495f327e573715694a1131': (
+                        'React (Create React App)',
+                        ['react', 'root', 'bundle.js']
+                    ),
+                    'e3ee45445209c15858604928b577005c': (
+                        'Vue.js (Vue CLI)',
+                        ['vue', 'app', '__vue']
+                    ),
+                    '20e8b153b6f937d53243f7736f875323': (
+                        'Angular',
+                        ['angular', 'ng-', 'zone.js']
+                    ),
+                    # CMS
+                    '06e3917a2bf1cf76dc1b73a51297dd9e': (
+                        'WordPress',
+                        ['wp-content', 'wp-includes', 'wordpress']
+                    ),
+                    '3e4b418ff5e58b5138e0f786a6e2f701': (
+                        'Joomla',
+                        ['joomla', '/media/jui/']
+                    ),
+                    # Platforms — perlu cross-validation ketat
+                    'f3415a6e29783f9828236780360a0494': (
+                        'Docker Default',
+                        ['docker', 'container']
+                    ),
+                    '1ba2ae710d927f13d483fd5d1e548c9b': (
+                        'Grafana',
+                        ['grafana', 'grafana-app', 'dashboard']
+                    ),
+                    '2b7e5e94cda6ce76cf5c7a47a6d5e95f': (
+                        'GitLab',
+                        ['gitlab', 'gl-']
+                    ),
+                    'a61e09aafa53a953f7e530bf0b0c0cfe': (
+                        'Jenkins',
+                        ['jenkins', 'hudson']
+                    ),
+                    '4c80c80bec80e3f5b3c1aca4efb8de9a': (
+                        'Kibana',
+                        ['kibana', 'elastic']
+                    ),
+                }
+
+                match = signatures.get(md5_hash)
+                if not match:
+                    continue
+
+                name, validators = match
+
+                # Empty favicon tidak perlu validasi
+                if name == 'Empty Favicon':
+                    return f"{name} (favicon: {md5_hash[:12]})"
+
+                # Cross-validate: cek apakah homepage punya marker terkait
+                if validators:
+                    homepage = self._get_homepage_content().lower()
+                    confirmed = any(v in homepage for v in validators)
+                    if confirmed:
+                        return f"{name} (favicon: {md5_hash[:12]})"
+                    else:
+                        # Hash cocok tapi tidak ada marker di homepage — skip
+                        # Kemungkinan CDN/WAF menyajikan favicon lain
+                        print(
+                            f"[!] Favicon hash matches {name} "
+                            f"but no supporting evidence in homepage content. "
+                            f"Skipping to avoid false positive."
+                        )
+                        continue
+                else:
+                    return f"{name} (favicon: {md5_hash[:12]})"
+
+            except (ValueError, TypeError):
+                pass
         return None
 
     def _detect_web_server(self) -> Optional[str]:
@@ -219,7 +351,7 @@ class TechFingerprint:
         for key, name in known_servers.items():
             if key in server_lower:
                 version = self._extract_version(
-                    rf'{key}/?([\d.]+)', server
+                    rf'{key}/?([\\d.]+)', server
                 )
                 return f"{name} {version}" if version else name
         return server
@@ -247,13 +379,13 @@ class TechFingerprint:
         langs = set()
         headers = self._get_combined_headers().lower()
         cookie_keys = [c.lower() for c in self._get_all_cookies().keys()]
-        content = self._get_combined_content().lower()
+        content = self._get_homepage_content().lower()
 
         checks = [
             ('PHP', lambda: (
                 'x-powered-by: php' in headers
                 or 'phpsessid' in cookie_keys
-                or '.php' in content
+                or re.search(r'\.php[\s\?"\'/>]', content) is not None
             )),
             ('ASP.NET', lambda: (
                 'asp.net' in headers
@@ -296,18 +428,29 @@ class TechFingerprint:
         frameworks = set()
         cookies = self._get_all_cookies()
         headers = self._get_combined_headers().lower()
-        content = self._get_combined_content()
+        content = self._get_homepage_content()
 
-        # Config file mining
+        # Config file mining — hanya jika content-type JSON
         for r in self.all_responses:
             if 'composer.json' in r['url'] and r['status'] == 200:
-                c = r['content'].lower()
-                if '"laravel/framework"' in c:
-                    frameworks.add('Laravel (Confirmed via Composer)')
-                if '"codeigniter' in c:
-                    frameworks.add('CodeIgniter (Confirmed via Composer)')
-                if '"symfony/' in c:
-                    frameworks.add('Symfony (Confirmed via Composer)')
+                ct = self._get_content_type(r)
+                if 'json' not in ct and 'text/plain' not in ct:
+                    # Bukan JSON asli, mungkin HTML fallback
+                    if not r['content'].strip().startswith('{'):
+                        continue
+                try:
+                    data = json.loads(r['content'])
+                    if not isinstance(data, dict):
+                        continue
+                    c = r['content'].lower()
+                    if '"laravel/framework"' in c:
+                        frameworks.add('Laravel (Confirmed via Composer)')
+                    if '"codeigniter' in c:
+                        frameworks.add('CodeIgniter (Confirmed via Composer)')
+                    if '"symfony/' in c:
+                        frameworks.add('Symfony (Confirmed via Composer)')
+                except (json.JSONDecodeError, AttributeError):
+                    pass
 
         # Cookie signatures
         cookie_map = {
@@ -345,7 +488,7 @@ class TechFingerprint:
             if marker in headers:
                 frameworks.add(fw)
 
-        # Content-based detection
+        # Content-based detection (hanya dari homepage)
         content_lower = content.lower()
         if 'whoops! there was an error' in content_lower:
             frameworks.add('Laravel (Debug Mode)')
@@ -359,37 +502,99 @@ class TechFingerprint:
         return list(frameworks)
 
     def _detect_cms(self) -> List[str]:
-        """Deteksi Content Management System."""
+        """
+        Deteksi Content Management System.
+
+        Perbaikan akurasi:
+        - API probing (wp-json, wp-login) memvalidasi isi konten, bukan hanya
+          status code, untuk menghindari false positive dari SPA fallback
+          atau Cloudflare custom error pages.
+        - Content-based detection hanya dari homepage.
+        """
         cms_list = set()
-        content = self._get_combined_content()
+        homepage_content = self._get_homepage_content()
 
-        # API probing
+        # API probing dengan validasi konten
         for r in self.all_responses:
+            # WordPress REST API: validasi bahwa response benar-benar JSON WordPress
             if 'wp-json' in r['url'] and r['status'] == 200:
-                cms_list.add('WordPress (API Exposed)')
-            if 'wp-login.php' in r['url'] and r['status'] == 200:
-                cms_list.add('WordPress')
+                ct = self._get_content_type(r)
+                content = r['content'].strip()
 
+                # Harus JSON content-type DAN berisi WordPress REST API markers
+                if 'json' in ct or content.startswith('{'):
+                    try:
+                        data = json.loads(content)
+                        if isinstance(data, dict):
+                            # WordPress REST API selalu punya key 'namespaces' atau 'routes'
+                            wp_markers = ['namespaces', 'routes', 'authentication', 'name', 'description']
+                            has_wp_keys = sum(1 for k in wp_markers if k in data) >= 2
+                            # Juga cek apakah ada 'wp' namespace
+                            namespaces = data.get('namespaces', [])
+                            has_wp_namespace = any('wp' in str(ns) for ns in namespaces) if namespaces else False
+
+                            if has_wp_keys and has_wp_namespace:
+                                cms_list.add('WordPress (API Exposed)')
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+
+                # Jika bukan JSON valid, cek apakah ini SPA fallback
+                elif self._is_spa_fallback(r):
+                    # SPA fallback — bukan WordPress
+                    pass
+
+            # WordPress Login: validasi bahwa response berisi form login WordPress
+            if 'wp-login.php' in r['url'] and r['status'] == 200:
+                content_lower = r['content'].lower()
+                # WordPress login page memiliki marker spesifik
+                wp_login_markers = [
+                    'wp-login',
+                    'wp-submit',
+                    'user_login',
+                    'user_pass',
+                    'loginform',
+                ]
+                matches = sum(1 for m in wp_login_markers if m in content_lower)
+                if matches >= 3:
+                    cms_list.add('WordPress')
+                elif self._is_spa_fallback(r):
+                    pass
+
+        # Content-based CMS detection — hanya dari homepage content
         signatures = [
-            ('WordPress', r'wp-content|wp-includes|/wp-json/'),
-            ('Joomla', r'content="Joomla!|/media/jui/'),
-            ('Drupal', r'Drupal|sites/all/modules|drupal\.js'),
-            ('OpenCart', r'catalog/view/theme'),
-            ('PrestaShop', r'prestashop|/themes/default-bootstrap/'),
-            ('Wix', r'wix-site|static\.wixstatic\.com'),
-            ('Shopify', r'shopify\.com|cdn\.shopify'),
-            ('Squarespace', r'squarespace\.com|static1\.squarespace'),
-            ('Ghost', r'ghost-(?:url|version)|content/themes'),
-            ('Moodle', r'moodle|/theme/boost/'),
+            ('WordPress', r'wp-content/(?:themes|plugins)|wp-includes/js/', [
+                # Extra validation: harus ada beberapa marker, bukan cuma satu
+            ]),
+            ('Joomla', r'content="Joomla!|/media/jui/', []),
+            ('Drupal', r'Drupal\.settings|sites/all/modules|drupal\.js', []),
+            ('OpenCart', r'catalog/view/theme', []),
+            ('PrestaShop', r'prestashop|/themes/default-bootstrap/', []),
+            ('Wix', r'wix-site|static\.wixstatic\.com', []),
+            ('Shopify', r'cdn\.shopify\.com|shopify\.com/s/', []),
+            ('Squarespace', r'squarespace\.com|static1\.squarespace', []),
+            ('Ghost', r'ghost-(?:url|version)|content/themes/.*ghost', []),
+            ('Moodle', r'moodle|/theme/boost/', []),
         ]
 
-        for name, pattern in signatures:
-            if re.search(pattern, content, re.IGNORECASE):
+        for name, pattern, _extra in signatures:
+            if re.search(pattern, homepage_content, re.IGNORECASE):
                 if name == 'WordPress':
-                    ver = self._extract_version(
-                        r'content="WordPress ([\d.]+)"', content
-                    )
-                    cms_list.add(f"WordPress {ver}" if ver else "WordPress")
+                    # WordPress perlu multiple indicators dari homepage
+                    wp_indicators = 0
+                    if re.search(r'wp-content/', homepage_content, re.IGNORECASE):
+                        wp_indicators += 1
+                    if re.search(r'wp-includes/', homepage_content, re.IGNORECASE):
+                        wp_indicators += 1
+                    if re.search(r'<meta\s+name=["\']generator["\']\s+content=["\']WordPress', homepage_content, re.IGNORECASE):
+                        wp_indicators += 2  # Strong signal
+                    if re.search(r'wp-emoji', homepage_content, re.IGNORECASE):
+                        wp_indicators += 1
+
+                    if wp_indicators >= 2:
+                        ver = self._extract_version(
+                            r'content="WordPress ([\d.]+)"', homepage_content
+                        )
+                        cms_list.add(f"WordPress {ver}" if ver else "WordPress")
                 else:
                     cms_list.add(name)
 
@@ -398,15 +603,16 @@ class TechFingerprint:
     def _detect_frontend_framework(self) -> List[str]:
         """Deteksi frontend framework dari konten HTML/JS."""
         fw = set()
-        content = self._get_combined_content()
+        content = self._get_homepage_content()
 
         patterns = {
             'React':      r'react[\.\-][\d\.]+|react-dom|_reactRootContainer|__react',
-            'Vue.js':     r'vue[\.\-][\d\.]+\.js|data-v-[a-f0-9]|__vue_app__',
+            'Vue.js':     r'vue[\.\-][\d\.]+\.js|data-v-[a-f0-9]|__vue_app__|/assets/index.*\.js.*type=["\']module["\']',
             'Angular':    r'angular[\.\-][\d\.]+\.js|ng-version|ng-app|zone\.js',
             'Svelte':     r'svelte|__svelte',
             'Next.js':    r'/_next/static|__NEXT_DATA__',
             'Nuxt.js':    r'/_nuxt/|__NUXT__',
+            'Vite App':   r'<script\s+type=["\']module["\']\s+.*?/assets/.*\.js|/@vite/client',
             'Remix':      r'remix|__remixContext',
             'Astro':      r'astro-island|astro\.js',
             'Livewire':   r'livewire(?:\.js)?|wire:',
@@ -421,16 +627,58 @@ class TechFingerprint:
                 fw.add(name)
         return list(fw)
 
+    def _detect_build_tools(self) -> List[str]:
+        """Deteksi build tools / bundlers dari konten homepage."""
+        tools = set()
+        content = self._get_homepage_content()
+        title = ''
+        title_match = re.search(r'<title[^>]*>(.*?)</title>', content, re.IGNORECASE | re.DOTALL)
+        if title_match:
+            title = title_match.group(1).strip()
+
+        # Vite: script type=module dengan /assets/ pattern, atau title "Vite App"
+        if re.search(r'/@vite/client', content):
+            tools.add('Vite (Dev Mode)')
+        elif re.search(r'<script\s+type=["\']module["\']\s+.*?/assets/index[\w.-]*\.js', content):
+            tools.add('Vite')
+        elif title.lower() == 'vite app':
+            tools.add('Vite')
+
+        # Webpack
+        if re.search(r'webpackJsonp|webpack|__webpack_require__|/static/js/main\.\w+\.js', content):
+            tools.add('Webpack')
+
+        # Parcel
+        if re.search(r'/parcel|parcelRequire', content):
+            tools.add('Parcel')
+
+        # Turbopack
+        if re.search(r'turbopack', content, re.IGNORECASE):
+            tools.add('Turbopack')
+
+        return list(tools)
+
     def _detect_js_libs(self) -> List[str]:
         """Deteksi library JavaScript dari package.json dan konten."""
         libs = set()
-        content = self._get_combined_content()
+        content = self._get_homepage_content()
 
-        # Config file mining
+        # Config file mining — hanya jika benar-benar JSON
         for r in self.all_responses:
             if 'package.json' in r['url'] and r['status'] == 200:
+                ct = self._get_content_type(r)
+                content_stripped = r['content'].strip()
+
+                # Validasi bahwa ini benar-benar JSON, bukan HTML fallback
+                if not ('json' in ct or content_stripped.startswith('{')):
+                    continue
+                if self._is_spa_fallback(r):
+                    continue
+
                 try:
-                    data = json.loads(r['content'])
+                    data = json.loads(content_stripped)
+                    if not isinstance(data, dict):
+                        continue
                     deps = {
                         **data.get('dependencies', {}),
                         **data.get('devDependencies', {}),
@@ -446,7 +694,7 @@ class TechFingerprint:
                 except (json.JSONDecodeError, AttributeError):
                     pass
 
-        # Regex fallback
+        # Regex fallback dari homepage content
         patterns = {
             'jQuery':    r'jquery[.-]([\d.]+)',
             'Lodash':    r'lodash[.-]([\d.]+)',
@@ -469,7 +717,7 @@ class TechFingerprint:
     def _detect_css_frameworks(self) -> List[str]:
         """Deteksi CSS framework dari konten halaman."""
         css = set()
-        content = self._get_combined_content()
+        content = self._get_homepage_content()
 
         patterns = {
             'Bootstrap':      r'bootstrap(?:[.\-]([\d.]+))?\.(?:min\.)?css',
@@ -488,17 +736,22 @@ class TechFingerprint:
         return list(css)
 
     def _detect_meta_generator(self) -> Optional[str]:
-        """Deteksi meta generator tag dari HTML."""
-        content = self._get_combined_content()
+        """Deteksi meta generator tag dari HTML homepage."""
+        content = self._get_homepage_content()
         pattern = r'<meta\s+name=["\']generator["\']\s+content=["\']([^"\']+)["\']'
         match = re.search(pattern, content, re.IGNORECASE)
-        return match.group(1) if match else None
+        if match:
+            return match.group(1)
+        # Cek juga format terbalik (content sebelum name)
+        pattern2 = r'<meta\s+content=["\']([^"\']+)["\']\s+name=["\']generator["\']'
+        match2 = re.search(pattern2, content, re.IGNORECASE)
+        return match2.group(1) if match2 else None
 
     def _detect_cdn(self) -> List[str]:
         """Deteksi CDN/Cloud dari header dan konten."""
         cdns = set()
         headers = self._get_combined_headers().lower()
-        content = self._get_combined_content().lower()
+        content = self._get_homepage_content().lower()
 
         cdn_map = {
             'Cloudflare':         ['cf-ray', '__cf_bm', 'cf-cache-status'],
@@ -540,7 +793,7 @@ class TechFingerprint:
 
     def _detect_analytics(self) -> List[str]:
         """Deteksi layanan analytics dan tracking."""
-        content = self._get_combined_content()
+        content = self._get_homepage_content()
         analytics = set()
 
         checks = [
@@ -561,7 +814,7 @@ class TechFingerprint:
     def _detect_database_hints(self) -> List[str]:
         """Deteksi petunjuk database dari error message dan header leak."""
         hints = set()
-        content = self._get_combined_content().lower()
+        content = self._get_homepage_content().lower()
         headers = self._get_combined_headers().lower()
 
         db_signatures = [

@@ -121,10 +121,11 @@ CSRF_COOKIE_MAP = {
 
 
 class LoginSecurityChecker:
-    def __init__(self, url: str, timeout: float = 10.0):
+    def __init__(self, url: str, timeout: float = 10.0, discovered: dict = None):
         self.url             = url if url.startswith('http') else f'https://{url}'
         self.base_url        = self.url.rstrip('/')
         self.timeout         = timeout
+        self.discovered      = discovered or {}
         self.session         = requests.Session()
         self.session.headers.update(HEADERS)
         self.session.verify  = False
@@ -238,7 +239,7 @@ class LoginSecurityChecker:
     def _discover_admin_subdomain(self) -> Optional[str]:
         """
         Detect admin panel / API di subdomain berbeda.
-        Contoh: blog.septito.my.id → api.septito.my.id/api/auth/login
+        Contoh: blog.septito.my.id -> api.septito.my.id/api/auth/login
         Support second-level TLD: .my.id, .co.id, .ac.id, dll.
         """
         parsed   = urlparse(self.base_url)
@@ -260,7 +261,7 @@ class LoginSecurityChecker:
 
         for tld in SECOND_LEVEL_TLDS:
             if hostname.endswith('.' + tld):
-                # Contoh: blog.septito.my.id → base = septito.my.id, sub = blog
+                # Contoh: blog.septito.my.id -> base = septito.my.id, sub = blog
                 prefix = hostname[: -(len(tld) + 1)]  # "blog.septito"
                 prefix_parts = prefix.split('.')
                 if len(prefix_parts) >= 2:
@@ -325,7 +326,7 @@ class LoginSecurityChecker:
                             self._warmup_subdomain(candidate_base)
                             return candidate_base
 
-                    # ── 405 = endpoint ada tapi hanya terima POST → coba POST ──
+                    # ── 405 = endpoint ada tapi hanya terima POST -> coba POST ──
                     if r.status_code == 405:
                         r2 = self.session.post(
                             url,
@@ -556,11 +557,48 @@ class LoginSecurityChecker:
     def _discover_login_mechanism(self) -> Tuple[Optional[str], str, Dict]:
         """
         Coba semua kandidat login endpoint.
-        Prioritas: _active_base (subdomain kalau ada) → base_url.
+        Prioritas: form di discovered -> _active_base (subdomain kalau ada) -> base_url.
         """
         token_data = self._get_fresh_token()
 
-        # Buat daftar base yang akan dicoba
+        # 1. Cek dari Discovered Forms
+        if self.discovered and 'forms' in self.discovered:
+            for f in self.discovered['forms']:
+                # Jika ada input type password, kemungkinan besar ini form login
+                has_password = any(inp.get('type') == 'password' for inp in f.get('inputs', []))
+                action = f.get('action')
+                if has_password and action:
+                    print(f"    [+] Login form ditemukan oleh Crawler: {action}")
+                    fields = self._detect_field_names_from_discovered_form(f)
+                    self._active_base = f"{urlparse(action).scheme}://{urlparse(action).netloc}"
+                    return action, 'form', fields
+
+        # 2. Cek dari Discovered API Bases untuk API-style login
+        if self.discovered and 'api_bases' in self.discovered:
+            for api_base in self.discovered['api_bases']:
+                for path in ['/login', '/auth/login', '/signin', '/authenticate']:
+                    url = f"{api_base.rstrip('/')}{path}"
+                    try:
+                        headers = self._build_request_headers(token_data, api_base)
+                        r = self.session.post(
+                            url,
+                            json={'email': 'probe@test.com', 'password': 'wrongpassword_probe123!'},
+                            headers=headers,
+                            timeout=5,
+                            allow_redirects=False
+                        )
+                        valid_codes = r.status_code in [400, 401, 422, 429]
+                        is_json = 'application/json' in r.headers.get('Content-Type', '')
+                        
+                        if valid_codes or (r.status_code == 200 and is_json):
+                            fields = self._detect_field_names(r.text)
+                            print(f"    [+] API Login ditemukan oleh Crawler: {url} [{r.status_code}]")
+                            self._active_base = api_base
+                            return url, 'json', fields
+                    except Exception:
+                        pass
+
+        # 3. Fallback: Buat daftar base yang akan dicoba
         search_bases: List[str] = []
         if self._active_base != self.base_url:
             search_bases.append(self._active_base)  # subdomain duluan
@@ -655,6 +693,24 @@ class LoginSecurityChecker:
 
         return fields
 
+    def _detect_field_names_from_discovered_form(self, form_data: Dict) -> Dict:
+        """Deteksi nama field user/pass langsung dari data form (hasil extract_forms)."""
+        fields = {'user': 'email', 'pass': 'password'}
+        inputs = form_data.get('inputs', [])
+        
+        for inp in inputs:
+            itype = inp.get('type', '').lower()
+            iname = inp.get('name', '').lower()
+            
+            if itype == 'password':
+                fields['pass'] = inp.get('name')
+            elif itype in ('text', 'email') or any(k in iname for k in ['user', 'email', 'login', 'id']):
+                # Hindari field yang bukan username
+                if not any(k in iname for k in ['token', 'csrf', 'submit', 'remember']):
+                    fields['user'] = inp.get('name')
+                    
+        return fields
+
     def _detect_field_names_form(self, path: str) -> Dict:
         if 'wp-login' in path:
             return {'user': 'log', 'pass': 'pwd'}
@@ -714,7 +770,7 @@ class LoginSecurityChecker:
                 success_kw = ['dashboard', 'home', 'admin', 'profile', 'welcome', 'app', 'wp-admin']
                 if any(k in location for k in success_kw) and \
                    not any(k in location for k in fail_kw):
-                    return True, False, f"Redirect → {location}"
+                    return True, False, f"Redirect -> {location}"
                 return False, False, "Redirect kembali ke login"
 
             if status == 200 and method == 'json':

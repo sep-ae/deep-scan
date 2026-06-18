@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Any
 
 # ── WAF Signature Database ────────────────────────────────────────────────────
 
-# Header-based signatures  (header_name_lowercase → WAF name)
+# Header-based signatures  (header_name_lowercase -> WAF name)
 WAF_HEADER_SIGNATURES: Dict[str, str] = {
     'cf-ray':               'Cloudflare',
     'cf-mitigated':         'Cloudflare',
@@ -30,7 +30,7 @@ WAF_HEADER_SIGNATURES: Dict[str, str] = {
     'x-amz-cf-id':          'AWS CloudFront',
 }
 
-# Body-based signatures  (substring di body lowercase → WAF name)
+# Body-based signatures  (substring di body lowercase -> WAF name)
 WAF_BODY_SIGNATURES: List[Dict[str, str]] = [
     # Cloudflare — HANYA signature dari challenge/block page, bukan CDN biasa
     # 'cloudflare' alone terlalu broad (match di RocketLoader, analytics, footer)
@@ -69,7 +69,7 @@ WAF_BODY_SIGNATURES: List[Dict[str, str]] = [
     {'sig': 'your request has been blocked', 'waf': 'Generic WAF'},
 ]
 
-# Cookie-based signatures  (cookie name lowercase → WAF name)
+# Cookie-based signatures  (cookie name lowercase -> WAF name)
 WAF_COOKIE_SIGNATURES: Dict[str, str] = {
     'cf_clearance':   'Cloudflare',
     '__cfduid':       'Cloudflare',
@@ -202,7 +202,7 @@ class WAFChecker:
                     self._blocked_status   = r.status_code
                     return True
 
-            # 403 pada probe tapi normal request OK → WAF blocking
+            # 403 pada probe tapi normal request OK -> WAF blocking
             if r.status_code == 403:
                 if r_normal and r_normal.status_code != 403:
                     self._detected        = True

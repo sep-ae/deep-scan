@@ -9,7 +9,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
-from helpers.spa_crawler import SPACrawler
 from helpers.scope import is_in_scope
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -17,10 +16,16 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 logging.getLogger("charset_normalizer").setLevel(logging.WARNING)
 
-def _info(msg: str): print(f"  [*] {msg}")
-def _ok(msg: str):   print(f"  [+] {msg}")
-def _warn(msg: str): print(f"  [!] {msg}")
-def _step(n: int, total: int, msg: str): print(f"\n  [{n}/{total}] {msg}")
+def _safe_print(msg: str):
+    try:
+        print(msg)
+    except Exception:
+        pass
+
+def _info(msg: str):  _safe_print(f"  [*] {msg}")
+def _ok(msg: str):    _safe_print(f"  [+] {msg}")
+def _warn(msg: str):  _safe_print(f"  [!] {msg}")
+def _step(n: int, total: int, msg: str): _safe_print(f"\n  [{n}/{total}] {msg}")
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -93,23 +98,30 @@ class OpenRedirectChecker:
         max_workers: int = 10,
         max_paths: int = 25,
         scope_mode: str = 'wildcard',
+        discovered: Optional[Dict] = None,
     ):
         self.base_url = url.rstrip('/')
-        self.timeout = int(timeout)
+        self.timeout = int(timeout) if timeout else 5
         self.cookies = cookies or {}
         self.extra_paths = extra_paths or []
         self.stop_on_first = stop_on_first
         self.max_workers = max_workers
         self.max_paths = max_paths
         self.scope_mode = scope_mode
+        self.discovered = discovered or {}
+        
         self._lock = threading.Lock()
         self._vuln_found = threading.Event()
         self._found_keys: set = set()
-        self._all_bases: List[str] = []
-        self._waf_detected = False
-        self._waf_info: Dict = {}
-        self._is_spa = False
-        self._playwright_used = False
+        self._waf_detected = self.discovered.get('waf_detected', False)
+        self._waf_info = self.discovered.get('waf_info', {})
+        self._is_spa = self.discovered.get('is_spa', False)
+        self._playwright_used = self.discovered.get('playwright_used', False)
+
+        self._all_bases: List[str] = [self.base_url]
+        for base in self.discovered.get('api_bases', []):
+            if base not in self._all_bases:
+                self._all_bases.append(base)
 
         self._client_no_redirect = HttpClient(
             timeout=self.timeout,
@@ -119,66 +131,17 @@ class OpenRedirectChecker:
             retries=0,
             allow_redirects=False,
         )
-        self._client_follow = HttpClient(
-            timeout=self.timeout,
-            headers=HEADERS,
-            cookies=self.cookies,
-            verify=False,
-            retries=0,
-            allow_redirects=True,
-        )
 
     def _get_own_domain(self) -> str:
         return urlparse(self.base_url).netloc
-
-    def _get_root_domain(self, netloc: str) -> str:
-        parts = netloc.split('.')
-        if len(parts) >= 3:
-            candidate = '.'.join(parts[-2:])
-            if candidate in SECOND_LEVEL_TLDS:
-                return '.'.join(parts[-3:])
-        return '.'.join(parts[-2:]) if len(parts) >= 2 else netloc
-
-    def _discover_bases(self) -> List[str]:
-        bases = [self.base_url]
-        parsed_main = urlparse(self.base_url)
-        main_root = self._get_root_domain(parsed_main.netloc)
-
-        try:
-            r = self._client_follow.get(self.base_url, headers=HEADERS)
-            if not r or not r.ok:
-                return bases
-
-            js_texts = [r.text]
-            for m in re.finditer(r'src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', r.text):
-                js_url = urljoin(self.base_url, m.group(1))
-                jr = self._client_follow.get(js_url)
-                if jr and jr.ok:
-                    js_texts.append(jr.text)
-
-            all_text = '\n'.join(js_texts)
-
-            for found_url in re.findall(r'["\`](https?://[a-zA-Z0-9._:-]+)["\`/]', all_text):
-                p = urlparse(found_url)
-                if not p.netloc or p.netloc == parsed_main.netloc:
-                    continue
-                if self._get_root_domain(p.netloc) != main_root:
-                    continue
-                base = f"{p.scheme}://{p.netloc}"
-                if base not in bases and is_in_scope(base, self.base_url, self.scope_mode):
-                    bases.append(base)
-                    _info(f"Subdomain ditemukan: {base}")
-
-        except Exception:
-            pass
-
-        return bases
 
     def _is_external_redirect(self, location: str) -> bool:
         if not location:
             return False
 
         loc = location.strip()
+        from urllib.parse import unquote
+        loc = unquote(loc)
 
         if loc.startswith('//') or loc.startswith('\\/'):
             netloc = loc.lstrip('/\\').split('/')[0].split('?')[0].lower()
@@ -234,80 +197,16 @@ class OpenRedirectChecker:
 
         return 'LOW'
 
-    def _crawl_paths(self, start_url: str, depth: int = 2) -> List[str]:
-        visited = set()
-        found = set()
-        own_domain = self._get_own_domain()
-
-        def crawl(url: str, level: int):
-            if level > depth or url in visited or len(found) >= self.max_paths:
-                return
-
-            visited.add(url)
-
-            try:
-                r = self._client_follow.get(url, headers=HEADERS)
-                if not r or not r.ok:
-                    return
-
-                ct = r.headers.get('Content-Type', '')
-                if 'html' in ct:
-                    for m in re.finditer(r'action=["\']([^"\'?#]+)', r.text, re.I):
-                        p = m.group(1)
-                        if p.startswith('/'):
-                            found.add(p)
-
-                    for m in re.finditer(r'href=["\']([^"\'#]+)["\']', r.text, re.I):
-                        href = m.group(1)
-                        p = urlparse(href)
-                        if p.netloc in ('', own_domain) and p.path:
-                            found.add(p.path)
-                            if level < depth and len(found) < self.max_paths:
-                                crawl(urljoin(start_url, p.path), level + 1)
-
-                elif 'json' in ct:
-                    for m in re.finditer(r'"(/[a-zA-Z0-9/_\-]+)"', r.text):
-                        found.add(m.group(1))
-
-            except Exception:
-                pass
-
-        crawl(start_url, 1)
-
-        extras = set()
-        for p in found:
-            parts = p.strip('/').split('/')
-            for i in range(1, len(parts) + 1):
-                extras.add('/' + '/'.join(parts[:i]))
-
-        return list(found | extras)[:self.max_paths]
-
     def _discover_paths(self) -> List[str]:
         active = list(REDIRECT_PATHS)
-        _info("Crawling target untuk menemukan path tambahan ...")
-        crawled = self._crawl_paths(self.base_url, depth=1)
-        _info(f"Ditemukan {len(crawled)} path dari HTTP crawling")
-
-        # SPA crawl via Playwright
-        spa = SPACrawler(
-            self.base_url, self._client_follow,
-            cookies=self.cookies, scope_mode=self.scope_mode,
-        )
-        spa_result = spa.crawl()
-        self._is_spa          = spa_result['is_spa']
-        self._playwright_used = spa_result['playwright_used']
-
-        if spa_result['paths']:
-            _info(f"Ditemukan {len(spa_result['paths'])} path dari SPA crawl")
-            crawled.extend(spa_result['paths'])
-
-        # Discover API bases dari SPA
-        for api_base in spa_result.get('api_bases', []):
-            if api_base.startswith('http') and api_base not in self._all_bases:
-                self._all_bases.append(api_base)
-                _info(f"API base dari SPA: {api_base}")
-
-        for p in crawled + self.extra_paths:
+        
+        # Merge with discovered endpoints
+        endpoints = self.discovered.get('endpoints', [])
+        for p in endpoints:
+            if not p.startswith('http'):
+                active.append(p)
+                
+        for p in self.extra_paths:
             if p not in active:
                 active.append(p)
 
@@ -331,7 +230,11 @@ class OpenRedirectChecker:
         if self.stop_on_first and self._vuln_found.is_set():
             return
 
-        full_url = base.rstrip('/') + '/' + path.lstrip('/')
+        if path.startswith(urlparse(base).path) and urlparse(base).path != '/':
+            # Avoid doubling paths like /api/api/auth/login
+            full_url = base.rstrip('/')[:-len(urlparse(base).path)] + '/' + path.lstrip('/')
+        else:
+            full_url = base.rstrip('/') + '/' + path.lstrip('/')
         test_url = f"{full_url}?{param}={quote(payload, safe=':/@%')}"
 
         try:
@@ -401,7 +304,10 @@ class OpenRedirectChecker:
         if not is_auth_path:
             return
 
-        full_url = base.rstrip('/') + '/' + path.lstrip('/')
+        if path.startswith(urlparse(base).path) and urlparse(base).path != '/':
+            full_url = base.rstrip('/')[:-len(urlparse(base).path)] + '/' + path.lstrip('/')
+        else:
+            full_url = base.rstrip('/') + '/' + path.lstrip('/')
         test_url = f"{full_url}?{param}={quote(payload, safe=':/@%')}"
 
         try:
@@ -440,11 +346,14 @@ class OpenRedirectChecker:
         except Exception:
             pass
 
-    def _test_path_on_base(self, base: str, path: str, results: Dict):
+    def _test_path_on_base(self, base: str, path: str, results: Dict, all_params: list):
         if self.stop_on_first and self._vuln_found.is_set():
             return
 
-        full_url = base.rstrip('/') + '/' + path.lstrip('/')
+        if path.startswith(urlparse(base).path) and urlparse(base).path != '/':
+            full_url = base.rstrip('/')[:-len(urlparse(base).path)] + '/' + path.lstrip('/')
+        else:
+            full_url = base.rstrip('/') + '/' + path.lstrip('/')
 
         try:
             probe = self._client_no_redirect.get(full_url, headers=HEADERS)
@@ -456,12 +365,39 @@ class OpenRedirectChecker:
         except Exception:
             return
 
-        for param in REDIRECT_PARAMS:
-            for payload in BYPASS_PAYLOADS:
+        # Determine if endpoint is completely static/not reflecting
+        response_sigs = []
+
+        def _task(param: str, payload: str):
+            if self.stop_on_first and self._vuln_found.is_set():
+                return
+            self._test_get(base, path, param, payload, results)
+            self._test_post(base, path, param, payload, results)
+
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            futures = []
+            for param in all_params:
+                # If we have 3 identical responses without redirect, skip remaining params
+                # This prevents wasting time on static files/endpoints
+                if len(response_sigs) >= 3 and len(set(response_sigs)) == 1:
+                    break
+                    
+                # We do sequential payload submission to allow smart skip to catch on, 
+                # but param checking is somewhat parallelized
+                for payload in BYPASS_PAYLOADS:
+                    if self.stop_on_first and self._vuln_found.is_set():
+                        break
+                    futures.append(ex.submit(_task, param, payload))
+            
+            for f in as_completed(futures):
                 if self.stop_on_first and self._vuln_found.is_set():
-                    return
-                self._test_get(base, path, param, payload, results)
-                self._test_post(base, path, param, payload, results)
+                    for rem in futures:
+                        rem.cancel()
+                    break
+                try:
+                    f.result()
+                except Exception:
+                    pass
 
     def run(self) -> Dict[str, Any]:
         results = {
@@ -471,40 +407,28 @@ class OpenRedirectChecker:
             'findings': [],
             'error': None,
             'summary': {},
-            'waf_detected': False,
-            'waf_info': {},
-            'spa_detected': False,
-            'playwright_used': False,
+            'waf_detected': self._waf_detected,
+            'waf_info': self._waf_info,
+            'spa_detected': self._is_spa,
+            'playwright_used': self._playwright_used,
         }
 
         try:
-            # ── WAF Detection ─────────────────────────────────────────────
-            waf = WAFChecker(self.base_url, self._client_follow)
-            self._waf_detected      = waf.detect()
-            self._waf_info          = waf.get_info()
-            results['waf_detected'] = self._waf_detected
-            results['waf_info']     = self._waf_info
-
-            waf_name   = self._waf_info.get('waf_name', '?')
-            waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
-            pw_status  = "tersedia" if SPACrawler.is_available() else "tidak tersedia"
-            _info(f"WAF: {waf_status} | Playwright: {pw_status}")
-
             _step(1, 3, "Mengumpulkan target & path kandidat ...")
             _info(f"Base URL: {self.base_url}")
 
-            all_bases = self._discover_bases()
-            self._all_bases = all_bases
-            _info(f"Total bases: {len(all_bases)} → {', '.join(all_bases)}")
+            all_bases = self._all_bases
+            _info(f"Total bases: {len(all_bases)} -> {', '.join(all_bases)}")
 
             paths = self._discover_paths()
-            _info(f"Total {len(paths)} path | {len(REDIRECT_PARAMS)} param | {len(BYPASS_PAYLOADS)} payload")
+            all_params = list(dict.fromkeys(REDIRECT_PARAMS + self.discovered.get('params', [])))
+            _info(f"Total {len(paths)} path | {len(all_params)} param | {len(BYPASS_PAYLOADS)} payload")
 
             _step(2, 3, f"Testing Open Redirect ({len(all_bases)} base × {len(paths)} path) ...")
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
                 futures = [
-                    ex.submit(self._test_path_on_base, base, path, results)
+                    ex.submit(self._test_path_on_base, base, path, results, all_params)
                     for base in all_bases
                     for path in paths
                 ]
@@ -525,9 +449,6 @@ class OpenRedirectChecker:
 
             _step(3, 3, "Finalisasi hasil ...")
 
-            results['spa_detected']    = self._is_spa
-            results['playwright_used'] = self._playwright_used
-
             if results['vulnerable_paths']:
                 results['vulnerable'] = True
                 count = len(results['vulnerable_paths'])
@@ -545,7 +466,7 @@ class OpenRedirectChecker:
                 results['findings'].append(f"Open Redirect ditemukan pada {count} endpoint.")
                 for v in results['vulnerable_paths']:
                     results['findings'].append(
-                        f"  → [{v['severity']}] [{v['type']}] [{v['method']}] param={v['param']} base={v['base']}"
+                        f"  -> [{v['severity']}] [{v['type']}] [{v['method']}] param={v['param']} base={v['base']}"
                     )
                     results['findings'].append(f"      URL: {v['url']}")
                     results['findings'].append(f"      Location: {v['location']}")
@@ -564,6 +485,5 @@ class OpenRedirectChecker:
             results['error'] = str(e)
         finally:
             self._client_no_redirect.close()
-            self._client_follow.close()
 
         return results

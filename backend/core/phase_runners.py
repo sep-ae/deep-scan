@@ -45,29 +45,29 @@ def run_tech_fingerprint(target_url: str):
         return {}
 
 
-def run_http_security_check(target_url: str):
+def run_http_security_check(target_url: str, discovered: dict = None):
     try:
         return {
-            'headers': analyze_security_headers(target_url),
-            'cors':    check_cors_misconfig(target_url),
+            'headers': analyze_security_headers(target_url, discovered=discovered),
+            'cors':    check_cors_misconfig(target_url, discovered=discovered),
         }
     except Exception as e:
         print(f"[!] HTTP Security check error: {e}")
         return {}
 
 
-def run_auth_protection(target_url: str):
+def run_auth_protection(target_url: str, discovered: dict = None):
     try:
-        return run_auth_protection_checks(target_url)
+        return run_auth_protection_checks(target_url, discovered=discovered)
     except Exception as e:
         print(f"[!] Auth protection error: {e}")
         return {}
 
 
-def run_web_vulnerabilities(target_url: str, cookies: dict = None, scope_mode: str = 'wildcard') -> dict:
+def run_web_vulnerabilities(target_url: str, cookies: dict = None, scope_mode: str = 'wildcard', discovered: dict = None) -> dict:
     try:
         print("  [*] Starting web vulnerability checks...")
-        raw = run_web_vulnerability_checks(target_url, scope_mode=scope_mode)
+        raw = run_web_vulnerability_checks(target_url, scope_mode=scope_mode, discovered=discovered)
         return _normalize_web_vuln_results(raw)
     except Exception as e:
         print(f"[!] Web vulnerability check error: {e}")

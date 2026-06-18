@@ -238,7 +238,7 @@ def _analyze_cache_control(value: str) -> list:
     return issues
 
 
-# ── Mapping header → fungsi analisis ─────────────────────────────────────────
+# ── Mapping header -> fungsi analisis ─────────────────────────────────────────
 
 VALUE_ANALYZERS = {
     "Content-Security-Policy":    _analyze_csp,
@@ -253,61 +253,76 @@ VALUE_ANALYZERS = {
 
 
 # Fungsi utama 
-def analyze_security_headers(target_url: str):
-    try:
-        resp = requests.get(target_url, timeout=10, verify=False)
-    except Exception as e:
-        return {
-            "error": str(e),
-            "headers": {},
-            "missing": list(SECURITY_HEADERS.keys()),
-            "findings": [],
-        }
+def analyze_security_headers(target_url: str, discovered: dict = None):
+    urls_to_test = [target_url]
+    if discovered and 'api_bases' in discovered:
+        urls_to_test.extend(discovered['api_bases'])
+        
+    # Deduplikasi
+    urls_to_test = list(dict.fromkeys(urls_to_test))
+    
+    all_findings = []
+    all_missing = []
+    raw_headers = {}
 
-    headers = resp.headers
-    missing = []
-    findings = []
+    for url in urls_to_test:
+        try:
+            resp = requests.get(url, timeout=10, verify=False)
+            headers = resp.headers
+            if url == target_url:
+                raw_headers = dict(headers)
+        except Exception as e:
+            if url == target_url:
+                return {
+                    "error": str(e),
+                    "headers": {},
+                    "missing": list(SECURITY_HEADERS.keys()),
+                    "findings": [],
+                }
+            continue
 
-    for header, config in SECURITY_HEADERS.items():
-        value = headers.get(header)
+        for header, config in SECURITY_HEADERS.items():
+            value = headers.get(header)
 
-        if not value:
-            # Header tidak ditemukan
-            missing.append(header)
-            findings.append({
-                "header": header,
-                "present": False,
-                "description": config["description"],
-                "severity": config["severity_missing"],
-                "vuln_key": config["vuln_key_missing"],
-            })
-        else:
-            # Header ditemukan — lakukan value analysis
-            finding = {
-                "header": header,
-                "present": True,
-                "value": value,
-                "description": config["description"],
-                "severity": "info",        # default: info (aman)
-                "vuln_key": None,
-                "value_issues": [],
-            }
+            if not value:
+                # Header tidak ditemukan
+                header_id = f"{header} (at {url})" if url != target_url else header
+                all_missing.append(header_id)
+                all_findings.append({
+                    "header": header_id,
+                    "present": False,
+                    "description": config["description"],
+                    "severity": config["severity_missing"],
+                    "vuln_key": config["vuln_key_missing"],
+                })
+            else:
+                # Header ditemukan — lakukan value analysis
+                header_id = f"{header} (at {url})" if url != target_url else header
+                finding = {
+                    "header": header_id,
+                    "present": True,
+                    "value": value,
+                    "description": config["description"],
+                    "severity": "info",        # default: info (aman)
+                    "vuln_key": None,
+                    "value_issues": [],
+                }
 
-            analyzer = VALUE_ANALYZERS.get(header)
-            if analyzer:
-                value_issues = analyzer(value)
-                if value_issues:
-                    finding["value_issues"] = value_issues
-                    # Ambil severity tertinggi dari semua issue
-                    severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
-                    worst = max(value_issues, key=lambda x: severity_order.get(x["severity"], 0))
-                    finding["severity"] = worst["severity"]
-                    finding["vuln_key"] = worst.get("vuln_key")
+                analyzer = VALUE_ANALYZERS.get(header)
+                if analyzer:
+                    value_issues = analyzer(value)
+                    if value_issues:
+                        finding["value_issues"] = value_issues
+                        # Ambil severity tertinggi dari semua issue
+                        severity_order = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+                        worst = max(value_issues, key=lambda x: severity_order.get(x["severity"], 0))
+                        finding["severity"] = worst["severity"]
+                        finding["vuln_key"] = worst.get("vuln_key")
 
-            findings.append(finding)
+                all_findings.append(finding)
 
     return {
-        "raw_headers": dict(headers),
-        "findings": findings,
-        "missing": missing,
+        "raw_headers": raw_headers,
+        "findings": all_findings,
+        "missing": all_missing,
     }

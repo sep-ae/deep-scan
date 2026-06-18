@@ -22,6 +22,8 @@ class Config:
     SECRET_KEY = _get_env('SECRET_KEY') or 'dev-only-secret-key-ganti-di-production'
     JWT_SECRET_KEY = _get_env('JWT_SECRET_KEY') or 'dev-only-jwt-key-ganti-di-production'
 
+    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+
     SQLALCHEMY_DATABASE_URI = _get_env('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {

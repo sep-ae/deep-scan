@@ -6,9 +6,9 @@ def extract_root_domain(hostname: str) -> str:
     Mengekstrak root domain dari hostname.
 
     Contoh:
-        blog.septito.my.id  →  septito.my.id
-        api.example.com     →  example.com
-        localhost            →  localhost
+        blog.septito.my.id  ->  septito.my.id
+        api.example.com     ->  example.com
+        localhost            ->  localhost
     """
     hostname = hostname.lower().strip()
     parts = hostname.split('.')
@@ -22,9 +22,9 @@ def extract_root_domain(hostname: str) -> str:
     if len(parts) >= 3:
         last_two = '.'.join(parts[-2:])
         if last_two in two_part_tlds:
-            # my.id, co.id → ambil 3 bagian terakhir sebagai root
+            # my.id, co.id -> ambil 3 bagian terakhir sebagai root
             return '.'.join(parts[-3:]) if len(parts) >= 3 else hostname
-        # .com, .net, .org → ambil 2 bagian terakhir
+        # .com, .net, .org -> ambil 2 bagian terakhir
         return '.'.join(parts[-2:])
 
     return hostname
@@ -44,18 +44,18 @@ def is_in_scope(url: str, target_url: str, scope_mode: str = 'wildcard') -> bool
 
     Contoh (target = https://blog.septito.my.id):
         strict mode:
-            blog.septito.my.id/api   → True
-            api.septito.my.id/users  → False (beda subdomain)
+            blog.septito.my.id/api   -> True
+            api.septito.my.id/users  -> False (beda subdomain)
 
         wildcard mode:
-            blog.septito.my.id/api   → True
-            api.septito.my.id/users  → True  (subdomain sama)
-            other-site.com/api       → False (beda domain)
+            blog.septito.my.id/api   -> True
+            api.septito.my.id/users  -> True  (subdomain sama)
+            other-site.com/api       -> False (beda domain)
     """
     parsed_check = urlparse(url)
     check_host = (parsed_check.netloc or '').lower().strip()
 
-    # URL relative (tanpa host) → selalu in-scope
+    # URL relative (tanpa host) -> selalu in-scope
     if not check_host:
         return True
 

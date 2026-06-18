@@ -42,8 +42,6 @@ JSON_HEADERS = {
     'X-Requested-With': 'XMLHttpRequest',
 }
 
-# CLOUDFLARE_SIGNATURES sudah dimigrasikan ke helpers/waf_checker.py
-
 
 # ── Payloads ──────────────────────────────────────────────────────────────────
 
@@ -66,13 +64,14 @@ WAF_BYPASS_PAYLOADS = [
 TEST_ENDPOINTS = [
     '/search', '/q', '/find',
     '/comment', '/feedback', '/contact',
-    '/api/search', '/',
+    '/api/search', '/', '/posts/preview', '/api/posts/preview'
 ]
 
 TEST_PARAMS = [
     'q', 'search', 'query', 'keyword', 's',
     'name', 'message', 'comment',
     'url', 'redirect',
+    'content', 'body', 'text', 'title', 'html', 'data', 'input', 'value', 'msg', 'description'
 ]
 
 
@@ -85,13 +84,13 @@ SEVERITY_VULN_KEY: dict[str, str] = {
     'LOW':      'XSS_LOW',
 }
 
-# Parameter sensitif yang langsung eksekusi di browser → CRITICAL
+# Parameter sensitif yang langsung eksekusi di browser -> CRITICAL
 _CRITICAL_PARAMS = {'redirect', 'url', 'next', 'return', 'callback', 'target'}
 
-# Path auth-sensitive → naikkan ke CRITICAL
+# Path auth-sensitive -> naikkan ke CRITICAL
 _AUTH_PATHS = {'login', 'signin', 'auth', 'oauth', 'register', 'admin', 'account'}
 
-# Payload berbahaya tinggi (script/event handler langsung) → HIGH
+# Payload berbahaya tinggi (script/event handler langsung) -> HIGH
 _HIGH_PAYLOAD_MARKERS = {'<script', '<svg', '<body', '<img', 'onerror', 'onload'}
 
 
@@ -101,19 +100,19 @@ def _classify_severity(url: str, param: str, payload: str, method: str) -> str:
     is_critical_param = param.lower() in _CRITICAL_PARAMS
     payload_lower     = payload.lower()
 
-    # Redirect/open-redirect param + XSS → CRITICAL
+    # Redirect/open-redirect param + XSS -> CRITICAL
     if is_critical_param:
         return 'CRITICAL'
 
-    # Auth endpoint + XSS → CRITICAL
+    # Auth endpoint + XSS -> CRITICAL
     if is_auth:
         return 'CRITICAL'
 
-    # Script injection atau event handler langsung → HIGH
+    # Script injection atau event handler langsung -> HIGH
     if any(marker in payload_lower for marker in _HIGH_PAYLOAD_MARKERS):
         return 'HIGH'
 
-    # Attribute injection atau JS context → MEDIUM
+    # Attribute injection atau JS context -> MEDIUM
     return 'MEDIUM'
 
 
@@ -127,18 +126,21 @@ class XSSChecker:
         cookies: Optional[Dict] = None,
         extra_paths: Optional[List[str]] = None,
         scope_mode: str = 'wildcard',
+        discovered: Optional[Dict] = None,
     ):
         self.base_url    = url.rstrip('/')
         self.timeout     = int(timeout)
         self.cookies     = cookies or {}
         self.extra_paths = extra_paths or []
         self.scope_mode  = scope_mode
+        self.discovered  = discovered or {}
         self._lock       = threading.Lock()
         self._vuln_found = threading.Event()
         self._found_keys: set = set()
-        self._waf_detected    = False
-        self._waf_info: Dict  = {}
-        self._api_bases: List = []
+        
+        self._waf_detected   = self.discovered.get('waf_detected', False)
+        self._waf_info       = self.discovered.get('waf_info', {})
+        self._api_bases: List = self.discovered.get('api_bases', [])
 
         self._client = HttpClient(
             timeout=5,
@@ -153,18 +155,12 @@ class XSSChecker:
     def _is_cloudflare_page(self, text: str) -> bool:
         return WAFChecker.is_cloudflare_page(text)
 
-    def _detect_waf(self) -> bool:
-        waf = WAFChecker(self.base_url, self._client, HEADERS)
-        detected = waf.detect()
-        self._waf_info = waf.get_info()
-        return detected
-
     def _is_reflected(self, body: str, payload: str, content_type: str = '') -> bool:
         if XSS_MARKER not in body:
             return False
 
-        if 'application/json' in content_type:
-            return False
+        # Jangan tolak HTML secara ketat, kalau application/json kita tetap cek
+        # karena bisa saja API return JSON tapi browser akan render HTML.
 
         from urllib.parse import unquote
         decoded_payload = unquote(payload).lower()
@@ -176,72 +172,21 @@ class XSSChecker:
 
         return False
 
-    def _extract_api_bases(self, js_text: str):
-        for api_url in re.findall(
-            r'["\`](https?://[a-zA-Z0-9._-]+/api(?:/[a-zA-Z0-9_/-]*)?)["\`]',
-            js_text
-        ):
-            base = api_url.rstrip('/')
-            if base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
-                self._api_bases.append(base)
-
     # ── Endpoint discovery ────────────────────────────────────────────────────
 
-    def _discover_endpoints(self) -> List[str]:
+    def _get_active_endpoints(self) -> List[str]:
         active = []
-
-        def probe(url: str):
-            with self._lock:
-                if url in active:
-                    return
-            try:
-                r = self._client.get(url, headers=HEADERS)
-                if not r or r.status_code in (404, 410):
-                    return
-                if self._is_cloudflare_page(r.text):
-                    return
-                with self._lock:
-                    if url not in active:
-                        active.append(url)
-            except HostDeadException:
-                raise
-            except Exception:
-                pass
-
-        with ThreadPoolExecutor(max_workers=15) as ex:
-            futures = [
-                ex.submit(probe, urljoin(self.base_url, p))
-                for p in TEST_ENDPOINTS
-            ]
-            for f in as_completed(futures):
-                try: f.result()
-                except HostDeadException: raise
-                except Exception: pass
-
-        r_main = self._client.get(self.base_url, headers=HEADERS)
-        if r_main:
-            for m in re.finditer(r'src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', r_main.text):
-                js_url = normalize_url(m.group(1), self.base_url)
-                jr = self._client.get(js_url)
-                if jr and jr.ok:
-                    self._extract_api_bases(jr.text)
-                    for path in extract_all_js_paths(jr.text):
-                        full = normalize_url(path, self.base_url)
-                        if full not in active:
-                            active.append(full)
-
-        for base in self._api_bases:
+        # Tambahkan endpoints dari CrawlerHelper
+        for ep in self.discovered.get('endpoints', []):
+            if ep not in active:
+                active.append(ep)
+                
+        # Tetap gunakan hardcoded sebagai fallback
+        for base in self._api_bases + [self.base_url]:
             for path in TEST_ENDPOINTS:
                 url = f"{base.rstrip('/')}{path}"
                 if url not in active:
-                    try:
-                        r = self._client.get(url, headers=JSON_HEADERS)
-                        if r and r.status_code not in (404, 410) \
-                                and not self._is_cloudflare_page(r.text):
-                            active.append(url)
-                            _ok(f"Endpoint API: {url}")
-                    except Exception:
-                        pass
+                    active.append(url)
 
         for path in self.extra_paths:
             full = normalize_url(path, self.base_url)
@@ -254,8 +199,11 @@ class XSSChecker:
 
     def _scan_url_params(self, url: str, results: Dict):
         payloads = XSS_PAYLOADS + (WAF_BYPASS_PAYLOADS if self._waf_detected else [])
+        
+        # Merge discovered params dengan TEST_PARAMS
+        all_params = list(dict.fromkeys(TEST_PARAMS + self.discovered.get('params', [])))
 
-        for param in TEST_PARAMS:
+        for param in all_params:
             if self._vuln_found.is_set():
                 return
 
@@ -273,11 +221,6 @@ class XSSChecker:
                         continue
 
                     ct = r.headers.get('Content-Type', '').lower()
-                    if 'application/json' in ct and 'text/html' not in ct:
-                        if XSS_MARKER not in r.text:
-                            continue
-
-                    ct = r.headers.get('Content-Type', '').lower()
                     if self._is_reflected(r.text, payload, ct):
                         key = f"{url}:{param}"
                         registered = False
@@ -287,11 +230,10 @@ class XSSChecker:
                                 registered = True
 
                         if registered:
-                            # ── Tambahan: classify severity & vuln_key ────────
                             severity = _classify_severity(url, param, payload, 'GET')
                             parsed   = urlparse(url)
 
-                            _warn(f"Reflected XSS [{severity}] → param={param} | {url}")
+                            _warn(f"Reflected XSS [{severity}] -> param={param} | {url}")
                             with self._lock:
                                 results['vulnerable_paths'].append({
                                     'url':           test_url,
@@ -320,11 +262,7 @@ class XSSChecker:
         if self._vuln_found.is_set():
             return
 
-        r_main = self._client.get(self.base_url, headers=HEADERS)
-        if not r_main or not r_main.ok or self._is_cloudflare_page(r_main.text):
-            return
-
-        forms = extract_forms(r_main.text, self.base_url)
+        forms = self.discovered.get('forms', [])
         if not forms:
             return
 
@@ -361,7 +299,8 @@ class XSSChecker:
                         if not r or self._is_cloudflare_page(r.text):
                             continue
 
-                        if self._is_reflected(r.text, payload):
+                        ct = r.headers.get('Content-Type', '').lower()
+                        if self._is_reflected(r.text, payload, ct):
                             key = f"form:{action}:{param}"
                             registered = False
                             with self._lock:
@@ -371,13 +310,12 @@ class XSSChecker:
 
                             if registered:
                                 method = form['method'].upper()
-                                # ── Tambahan: classify severity & vuln_key ────
                                 severity = _classify_severity(action, param, payload, method)
                                 parsed   = urlparse(action)
                                 vuln_url = (f"{action}?{param}={payload}"
                                             if form['method'] == 'get' else action)
 
-                                _warn(f"Reflected XSS (form {method}) [{severity}] → "
+                                _warn(f"Reflected XSS (form {method}) [{severity}] -> "
                                       f"param={param} | {action}")
                                 with self._lock:
                                     results['vulnerable_paths'].append({
@@ -413,20 +351,14 @@ class XSSChecker:
             'findings':         [],
             'error':            None,
             'summary':          {},        
-            'waf_detected':     False,
+            'waf_detected':     self._waf_detected,
         }
 
         try:
-            self._waf_detected      = self._detect_waf()
-            results['waf_detected'] = self._waf_detected
             results['waf_info']     = self._waf_info
-            waf_name   = self._waf_info.get('waf_name', '?')
-            waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
-            pw_status  = "tersedia" if SPACrawler.is_available() else "tidak tersedia"
-            _info(f"WAF: {waf_status} | Playwright: {pw_status}")
-
+            
             _step(1, 3, "Mengumpulkan endpoint ...")
-            endpoints = self._discover_endpoints()
+            endpoints = self._get_active_endpoints()
             if self._api_bases:
                 _info(f"External API: {', '.join(self._api_bases)}")
             _info(f"Total {len(endpoints)} endpoint aktif")
@@ -477,7 +409,7 @@ class XSSChecker:
                 )
                 for v in results['vulnerable_paths']:
                     results['findings'].append(
-                        f"  → [{v['type']}][{v.get('severity','?')}] [{v['method']}] "
+                        f"  -> [{v['type']}][{v.get('severity','?')}] [{v['method']}] "
                         f"{v['url']} (param: {v['param']})"
                     )
                 _ok(

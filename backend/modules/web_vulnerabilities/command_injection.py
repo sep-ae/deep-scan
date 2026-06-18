@@ -9,10 +9,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
 from helpers.spa_crawler import SPACrawler
-try:
-    from helpers.browser import crawl_spa
-except ImportError:
-    crawl_spa = None
 from helpers.scope import is_in_scope
 from helpers.parsers import (
     is_spa_html,
@@ -26,10 +22,16 @@ from helpers.parsers import (
 
 # ── Terminal output helpers ───────────────────────────────────────────────────
 
-def _info(msg: str):  print(f"  [*] {msg}")
-def _ok(msg: str):    print(f"  [+] {msg}")
-def _warn(msg: str):  print(f"  [!] {msg}")
-def _step(n: int, total: int, msg: str): print(f"\n  [{n}/{total}] {msg}")
+def _safe_print(msg: str):
+    try:
+        print(msg)
+    except Exception:
+        pass
+
+def _info(msg: str):  _safe_print(f"  [*] {msg}")
+def _ok(msg: str):    _safe_print(f"  [+] {msg}")
+def _warn(msg: str):  _safe_print(f"  [!] {msg}")
+def _step(n: int, total: int, msg: str): _safe_print(f"\n  [{n}/{total}] {msg}")
 
 
 # ── Headers ───────────────────────────────────────────────────────────────────
@@ -45,8 +47,6 @@ JSON_HEADERS = {
     'X-Requested-With': 'XMLHttpRequest',
 }
 
-# WAF_BYPASS_HEADERS sudah dimigrasikan ke helpers/waf_checker.py
-# Import dari sana untuk backward compat
 from helpers.waf_checker import WAF_BYPASS_HEADERS
 
 
@@ -73,9 +73,8 @@ CMD_PAYLOADS = [
 WAF_BYPASS_PAYLOADS = [
     f'%7C%20echo%20{_CMD_TOKEN}',
     f';${{IFS}}echo${{IFS}}{_CMD_TOKEN}',
-    f'%0aecho%20{_CMD_TOKEN}',
+    f'%0aeecho%20{_CMD_TOKEN}',
     f'%26%20echo%20{_CMD_TOKEN}',
-    # Tambahan WAF bypass payloads
     f'%0d%0aecho%20{_CMD_TOKEN}',
     f'`echo {_CMD_TOKEN}`',
     f'|${{IFS}}id',
@@ -104,8 +103,6 @@ CMD_SUCCESS_SIGNATURES = [
     'bytes from', 'ttl=',
     'approximate round trip',
 ]
-
-# CLOUDFLARE_SIGNATURES sudah dimigrasikan ke helpers/waf_checker.py
 
 TEST_ENDPOINTS = [
     '/ping', '/exec', '/run', '/cmd',
@@ -151,7 +148,7 @@ SEVERITY_VULN_KEY: dict[str, str] = {
     'LOW':      'CMDI_LOW',
 }
 
-# Signature yang langsung konfirmasi RCE → CRITICAL
+# Signature yang langsung konfirmasi RCE -> CRITICAL
 _CRITICAL_SIGNATURES = {
     _CMD_TOKEN, 'uid=0(root)', 'root:x:', 'daemon:x:',
     '/bin/bash', '/bin/sh', '/usr/bin',
@@ -159,7 +156,7 @@ _CRITICAL_SIGNATURES = {
     'directory of c:\\',
 }
 
-# Signature OS info → HIGH
+# Signature OS info -> HIGH
 _HIGH_SIGNATURES = {
     'uid=', 'volume serial number', 'windows_nt',
 }
@@ -186,51 +183,31 @@ def _classify_severity(url: str, signature: str, method: str, is_time_based: boo
     return 'LOW'
 
 
-# ── JS src extractor ──────────────────────────────────────────────────────────
-
-def _extract_js_srcs(html: str, base_url: str = '') -> List[str]:
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, 'html.parser')
-    srcs = []
-    for s in soup.find_all('script'):
-        src = s.get('src', '').strip()
-        if src:
-            srcs.append(normalize_url(src, base_url))
-    for link in soup.find_all('link'):
-        rel     = link.get('rel', [])
-        rel_str = ' '.join(rel).lower() if isinstance(rel, list) else str(rel).lower()
-        href    = link.get('href', '').strip()
-        if 'modulepreload' in rel_str and href and href.endswith(('.js', '.mjs')):
-            srcs.append(normalize_url(href, base_url))
-        if 'preload' in rel_str and link.get('as') == 'script' and href:
-            srcs.append(normalize_url(href, base_url))
-    return list(dict.fromkeys(srcs))
-
-
 # ── Main class ────────────────────────────────────────────────────────────────
 
 class CommandInjectionChecker:
     def __init__(
         self,
         url: str,
-        timeout: float = 6.0,
+        timeout: float = 5.0,
         extra_paths: Optional[List[str]] = None,
         cookies: Optional[Dict] = None,
         scope_mode: str = 'wildcard',
+        discovered: Optional[Dict] = None,
     ):
         self.base_url                  = url.rstrip('/')
         self.timeout                   = int(timeout)
         self.extra_paths               = extra_paths or []
         self.cookies                   = cookies or {}
         self.scope_mode                = scope_mode
+        self.discovered                = discovered or {}
         self._found_urls: set          = set()
-        self._is_spa                   = False
-        self._waf_detected             = False
-        self._waf_info: Dict           = {}
-        self._api_bases: List          = []
-        self._playwright_cookies: Dict = {}
         self._lock                     = threading.Lock()
         self._vuln_found               = threading.Event()
+        
+        self._waf_detected       = self.discovered.get('waf_detected', False)
+        self._waf_info           = self.discovered.get('waf_info', {})
+        self._api_bases: List    = self.discovered.get('api_bases', [])
 
         self._client = HttpClient(
             timeout=self.timeout,
@@ -245,147 +222,68 @@ class CommandInjectionChecker:
     def _is_cloudflare_page(self, text: str) -> bool:
         return WAFChecker.is_cloudflare_page(text)
 
-    def _is_real_endpoint(self, r) -> bool:
-        if not r:
-            return False
-        ct = r.headers.get('Content-Type', '').lower()
-        if 'application/json' in ct:
-            return True
-        if self._is_cloudflare_page(r.text):
-            return False
-        if is_spa_html(r.text):
-            return False
-        return True
-
-    def _detect_waf(self) -> bool:
-        waf = WAFChecker(self.base_url, self._client, HEADERS)
-        detected = waf.detect()
-        self._waf_info  = waf.get_info()
-        self._waf_obj   = waf
-        return detected
-
     def _get_with_bypass(self, url: str):
-        if hasattr(self, '_waf_obj'):
-            return self._waf_obj.get_with_bypass(url, JSON_HEADERS)
+        # Kalau mau lebih proper bisa passing WAFChecker instance dari CrawlerHelper,
+        # tapi sementara kita coba header manual
         for extra_h in WAF_BYPASS_HEADERS:
             r = self._client.get(url, headers={**JSON_HEADERS, **extra_h})
-            if r and not self._is_cloudflare_page(r.text) and self._is_real_endpoint(r):
+            if r and not self._is_cloudflare_page(r.text):
                 return r
         return None
 
     # ── Endpoint discovery ────────────────────────────────────────────────────
 
-    def _probe_endpoint(self, url: str, active: list):
-        with self._lock:
-            if url in active:
-                return
-        r = self._client.get(url, headers=JSON_HEADERS)
-        if not r or r.status_code in (404, 410):
-            return
-        ct = r.headers.get('Content-Type', '').lower()
-        if 'text/html' in ct and self._is_cloudflare_page(r.text):
-            return
-
-        should_add = False
-        if 'application/json' in ct:
-            should_add = True
-        elif self._waf_detected and r.status_code == 403 \
-                and not self._is_cloudflare_page(r.text):
-            should_add = True
-        elif r.status_code in (200, 201, 405) \
-                and 'text/html' not in ct \
-                and self._is_real_endpoint(r):
-            should_add = True
-
-        if should_add:
-            with self._lock:
-                if url not in active:
-                    active.append(url)
-                    _ok(f"Endpoint ditemukan: {url}")
-
-    def _crawl_js_endpoints(self) -> List[str]:
-        found = []
-        r = self._client.get(self.base_url, headers=HEADERS)
-        if not r:
-            return found
-
-        is_cf      = self._is_cloudflare_page(r.text)
-        confidence = spa_confidence(r.text)
-
-        if confidence >= 2 and not is_cf:
-            self._is_spa = True
-            _info("SPA terdeteksi, crawling dengan Playwright ...")
-            if SPACrawler.is_available():
-                try:
-                    pw_data = crawl_spa(
-                        self.base_url, block_images=True,
-                        initial_cookies=[
-                            {"name": k, "value": v, "url": self.base_url}
-                            for k, v in self.cookies.items()
-                        ] if self.cookies else None,
-                    )
-                    self._playwright_cookies = pw_data.get("cookies", {})
-                    for call in pw_data.get("api_calls", []):
-                        path = call["url"].replace(self.base_url, "").split("?")[0].split("#")[0]
-                        if path and path != "/" and not path.startswith("http"):
-                            found.append(path)
-                    found.extend(extract_all_js_paths(pw_data.get("html", "")))
-                    js_srcs = _extract_js_srcs(pw_data.get("html", ""), self.base_url)
-                    for js_url in js_srcs:
-                        js_r = self._client.get(js_url)
-                        if js_r and js_r.ok:
-                            found.extend(extract_paths_from_js(js_r.text))
-                            self._extract_api_bases(js_r.text)
-                except Exception as e:
-                    _warn(f"Playwright gagal ({e}), fallback ke JS parsing")
-                    self._fallback_js_crawl(r, found)
-            else:
-                _info("Playwright tidak tersedia, fallback ke JS parsing")
-                self._fallback_js_crawl(r, found)
-        else:
-            self._fallback_js_crawl(r, found)
-
-        unique = list(set(found))
-        if self._api_bases:
-            _info(f"External API ditemukan: {', '.join(self._api_bases)}")
-        return unique
-
-    def _fallback_js_crawl(self, r, found: list):
-        js_srcs = _extract_js_srcs(r.text, self.base_url)
-        for js_url in js_srcs:
-            js_r = self._client.get(js_url)
-            if js_r and js_r.ok:
-                found.extend(extract_paths_from_js(js_r.text))
-                self._extract_api_bases(js_r.text)
-        found.extend(extract_all_js_paths(r.text))
-
-    def _extract_api_bases(self, js_text: str):
-        for api_url in re.findall(
-            r'["\`](https?://[a-zA-Z0-9._-]+/api(?:/[a-zA-Z0-9_/-]*)?)["\`]',
-            js_text
-        ):
-            base = api_url.rstrip('/')
-            if base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
-                self._api_bases.append(base)
-
-        for base in re.findall(
-            r'["\`](/api/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)?)["\`]',
-            js_text
-        ):
-            parts = base.strip('/').split('/')
-            if len(parts) >= 2:
-                normalized = '/' + '/'.join(parts[:2])
-                if normalized not in self._api_bases:
-                    self._api_bases.append(normalized)
-
-    def _build_api_endpoints(self) -> List[str]:
-        candidates = []
+    def _get_active_endpoints(self) -> List[str]:
+        active = []
+        for ep in self.discovered.get('endpoints', []):
+            if ep not in active:
+                active.append(ep)
+                
+        # API Candidates
         for base in self._api_bases:
             for suffix in API_CMD_SUFFIXES:
-                full = (base.rstrip('/') + suffix) if base.startswith('http') \
-                       else (base + suffix)
-                candidates.append(full)
-        return candidates
+                full = (base.rstrip('/') + suffix) if base.startswith('http') else (base + suffix)
+                if full not in active:
+                    active.append(full)
+                    
+        for p in TEST_ENDPOINTS:
+            url = urljoin(self.base_url, p)
+            if url not in active:
+                active.append(url)
+                
+        for path in self.extra_paths:
+            full = normalize_url(path, self.base_url)
+            if full not in active:
+                active.append(full)
+                
+        return list(dict.fromkeys(active))
+
+    def _prefilter_endpoints(self, endpoints: List[str]) -> List[str]:
+        """Quick filter: remove endpoints returning 404/410."""
+        live = []
+
+        def _check(url):
+            if self._vuln_found.is_set():
+                return None
+            try:
+                r = self._client.get(url, headers=HEADERS, timeout=4)
+                if r and r.status_code not in (404, 410):
+                    return url
+            except Exception:
+                pass
+            return None
+
+        with ThreadPoolExecutor(max_workers=15) as ex:
+            futures = [ex.submit(_check, u) for u in endpoints]
+            for f in as_completed(futures):
+                try:
+                    result = f.result()
+                    if result:
+                        live.append(result)
+                except Exception:
+                    pass
+
+        return live
 
     # Injection core
     def _check_response(self, r, url: str, param: str,
@@ -393,10 +291,8 @@ class CommandInjectionChecker:
         if not r or self._is_cloudflare_page(r.text):
             return False
 
-        ct = r.headers.get('Content-Type', '').lower()
-        if 'text/html' in ct:
-            return False
-
+        # Dihapus strict check 'text/html' agar tidak false negative di aplikasi web klasik
+        
         body_lower = r.text.lower()
         for sig in CMD_SUCCESS_SIGNATURES:
             if sig in body_lower:
@@ -413,7 +309,7 @@ class CommandInjectionChecker:
                     severity = _classify_severity(url, sig, method, is_time_based=False)
                     parsed   = urlparse(url)
 
-                    _warn(f"CMD Injection [{severity}] ({method}) → param={param} | sig={sig}")
+                    _warn(f"CMD Injection [{severity}] ({method}) -> param={param} | sig={sig}")
                     with self._lock:
                         results['vulnerable_paths'].append({
                             'url':           vuln_url,
@@ -458,6 +354,26 @@ class CommandInjectionChecker:
         if self._vuln_found.is_set():
             return
 
+        # Endpoint probe: check if endpoint processes query params
+        try:
+            r_bare  = self._client.get(url, headers=JSON_HEADERS, timeout=4)
+            r_probe = self._client.get(f"{url}?__dsProbe__=xyz", headers=JSON_HEADERS, timeout=4)
+            if (r_bare and r_probe
+                    and r_bare.status_code == r_probe.status_code
+                    and abs(len(r_bare.text) - len(r_probe.text)) < 30):
+                # Endpoint doesn't process params -> test only top 3 params
+                all_params = list(dict.fromkeys(
+                    TEST_PARAMS + self.discovered.get('params', [])
+                ))[:3]
+            else:
+                all_params = list(dict.fromkeys(
+                    TEST_PARAMS + self.discovered.get('params', [])
+                ))
+        except Exception:
+            all_params = list(dict.fromkeys(
+                TEST_PARAMS + self.discovered.get('params', [])
+            ))
+
         payloads = CMD_PAYLOADS + (WAF_BYPASS_PAYLOADS if self._waf_detected else [])
 
         def task(param: str, payload: str):
@@ -470,7 +386,7 @@ class CommandInjectionChecker:
         with ThreadPoolExecutor(max_workers=10) as ex:
             futures = [
                 ex.submit(task, param, payload)
-                for param in TEST_PARAMS
+                for param in all_params
                 for payload in payloads
             ]
             for f in as_completed(futures):
@@ -490,10 +406,12 @@ class CommandInjectionChecker:
     # ── Time-based ────────────────────────────────────────────────────────────
 
     def _time_based_scan(self, active_endpoints: List[str], results: Dict):
-        for url in active_endpoints:
+        all_params = list(dict.fromkeys(TEST_PARAMS + self.discovered.get('params', [])))
+        time_eps = active_endpoints[:10]  # Limit time-based scope
+        for url in time_eps:
             if self._vuln_found.is_set():
                 break
-            for param in TEST_PARAMS[:5]:
+            for param in all_params[:3]:  # Top 3 params only
                 if self._vuln_found.is_set():
                     break
                 for payload in TIME_PAYLOADS:
@@ -513,11 +431,10 @@ class CommandInjectionChecker:
                                     self._found_urls.add(key)
                                     registered = True
                             if registered:
-                                # ── Tambahan: classify severity time-based ──
                                 severity = _classify_severity(url, '', 'GET', is_time_based=True)
                                 parsed   = urlparse(url)
 
-                                _warn(f"CMD Injection [{severity}] (time-based) → "
+                                _warn(f"CMD Injection [{severity}] (time-based) -> "
                                       f"param={param} | delay={elapsed:.1f}s")
                                 with self._lock:
                                     results['vulnerable_paths'].append({
@@ -546,12 +463,11 @@ class CommandInjectionChecker:
     # ── Form scan ─────────────────────────────────────────────────────────────
 
     def _scan_forms(self, results: Dict):
-        if self._vuln_found.is_set():
+        forms = self.discovered.get('forms', [])
+        if not forms:
             return
-        r_main = self._client.get(self.base_url, headers=JSON_HEADERS)
-        if not r_main or not r_main.ok or self._is_cloudflare_page(r_main.text):
-            return
-        for form in extract_forms(r_main.text, self.base_url):
+            
+        for form in forms:
             if self._vuln_found.is_set():
                 break
             for inp in form['inputs']:
@@ -570,80 +486,52 @@ class CommandInjectionChecker:
     def run(self) -> Dict[str, Any]:
         results = {
             'vulnerable':        False,
-            'vulnerable_paths':  [],        # ← rename dari vulnerable_params
+            'vulnerable_paths':  [],
             'total_tested':      0,
             'findings':          [],
             'error':             None,
-            'summary':           {},        # ← tambah
-            'waf_detected':      False,
-            'spa_detected':      False,
-            'playwright_used':   False,
+            'summary':           {},
+            'waf_detected':      self._waf_detected,
         }
 
         try:
-            self._waf_detected      = self._detect_waf()
-            results['waf_detected'] = self._waf_detected
             results['waf_info']     = self._waf_info
-            waf_name   = self._waf_info.get('waf_name', '?')
-            waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
-            pw_status  = "tersedia" if SPACrawler.is_available() else "tidak tersedia"
-            _info(f"WAF: {waf_status} | Playwright: {pw_status}")
+            
+            _step(1, 4, "Mengumpulkan endpoint ...")
+            raw_endpoints = self._get_active_endpoints()
+            _info(f"Total {len(raw_endpoints)} endpoint kandidat")
 
-            _step(1, 3, "Mengumpulkan endpoint ...")
-            active_endpoints = []
+            _step(2, 4, "Pre-filter endpoint (skip 404) ...")
+            active_endpoints = self._prefilter_endpoints(raw_endpoints)
+            _info(f"{len(active_endpoints)} endpoint aktif (dari {len(raw_endpoints)} kandidat)")
 
-            if self.extra_paths:
-                for path in self.extra_paths:
-                    full = normalize_url(path, self.base_url)
-                    with self._lock:
-                        if full not in active_endpoints:
-                            active_endpoints.append(full)
-                            _ok(f"Extra path: {full}")
-
-            with ThreadPoolExecutor(max_workers=15) as ex:
+            _step(3, 4, f"Injecting payload ke {len(active_endpoints)} endpoint ...")
+            with ThreadPoolExecutor(max_workers=8) as ex:
                 futures = [
-                    ex.submit(self._probe_endpoint,
-                              urljoin(self.base_url, p), active_endpoints)
-                    for p in TEST_ENDPOINTS
+                    ex.submit(self._inject_endpoint, url, results)
+                    for url in active_endpoints
                 ]
                 for f in as_completed(futures):
-                    try: f.result()
-                    except HostDeadException: raise
-                    except Exception: pass
-
-            js_paths = self._crawl_js_endpoints()
-            results['spa_detected']    = self._is_spa
-            results['playwright_used'] = SPACrawler.is_available() and self._is_spa
-
-            api_candidates = self._build_api_endpoints()
-            with ThreadPoolExecutor(max_workers=15) as ex:
-                futures = [
-                    ex.submit(self._probe_endpoint, p, active_endpoints)
-                    if p.startswith('http') else
-                    ex.submit(self._probe_endpoint,
-                              urljoin(self.base_url, p), active_endpoints)
-                    for p in js_paths + api_candidates
-                ]
-                for f in as_completed(futures):
-                    try: f.result()
-                    except HostDeadException: raise
-                    except Exception: pass
-
-            _info(f"Total {len(active_endpoints)} endpoint aktif")
-
-            _step(2, 3, f"Injecting payload ke {len(active_endpoints)} endpoint ...")
-            for url in active_endpoints:
-                if self._vuln_found.is_set():
-                    break
-                self._inject_endpoint(url, results)
+                    if self._vuln_found.is_set():
+                        for rem in futures:
+                            rem.cancel()
+                        break
+                    try:
+                        f.result()
+                    except HostDeadException:
+                        for rem in futures:
+                            rem.cancel()
+                        break
+                    except Exception:
+                        pass
 
             self._scan_forms(results)
 
             if not results['vulnerable_paths']:
-                _step(3, 3, "Time-based scan ...")
+                _step(4, 4, "Time-based scan ...")
                 self._time_based_scan(active_endpoints, results)
             else:
-                _step(3, 3, "Time-based dilewati (sudah ada temuan)")
+                _step(4, 4, "Time-based dilewati (sudah ada temuan)")
 
             # ── Finalize + summary ────────────────────────────────────────────
             if results['vulnerable_paths']:
@@ -665,7 +553,7 @@ class CommandInjectionChecker:
                 )
                 for v in results['vulnerable_paths']:
                     results['findings'].append(
-                        f"  → [{v['severity']}] [{v.get('method','GET')}] {v['url']} "
+                        f"  -> [{v['severity']}] [{v.get('method','GET')}] {v['url']} "
                         f"(param: {v['param']}, sig: {v['signature']})"
                     )
                 _ok(

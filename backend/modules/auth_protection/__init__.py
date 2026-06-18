@@ -4,7 +4,7 @@ from .rate_limit_checker import RateLimitChecker
 from .login_security_checker import LoginSecurityChecker
 
 
-def run_auth_protection_checks(url: str) -> dict:
+def run_auth_protection_checks(url: str, discovered: dict = None) -> dict:
     results = {}
 
     print("  [>] WAF Detection...")
@@ -16,6 +16,6 @@ def run_auth_protection_checks(url: str) -> dict:
     time.sleep(0.5)
 
     print("  [>] Login Security Check...")
-    results['login'] = LoginSecurityChecker(url).run()
+    results['login'] = LoginSecurityChecker(url, discovered=discovered).run()
 
     return results

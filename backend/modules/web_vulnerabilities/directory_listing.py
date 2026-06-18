@@ -115,13 +115,13 @@ def _classify_severity(path: str, files: List[str]) -> str:
         if cp in path_lower:
             return 'CRITICAL'
 
-    # Ada file sensitif di dalamnya → HIGH
+    # Ada file sensitif di dalamnya -> HIGH
     for f in files:
         ext = '.' + f.split('.')[-1].lower() if '.' in f else ''
         if ext in SENSITIVE_EXTENSIONS:
             return 'HIGH'
 
-    # Uploads/media → MEDIUM (mungkin file user yang tidak seharusnya publik)
+    # Uploads/media -> MEDIUM (mungkin file user yang tidak seharusnya publik)
     if any(kw in path_lower for kw in ['upload', 'media', 'storage', 'files']):
         return 'MEDIUM'
 
@@ -182,6 +182,7 @@ class DirectoryListingChecker:
         max_depth: int = 2,       
         enumerate_contents: bool = True,
         scope_mode: str = 'wildcard',
+        discovered: Optional[Dict] = None,
     ):
         self.base_url            = url.rstrip('/')
         self.timeout             = int(timeout)
@@ -190,9 +191,18 @@ class DirectoryListingChecker:
         self.max_depth           = max_depth
         self.enumerate_contents  = enumerate_contents
         self.scope_mode          = scope_mode
+        self.discovered          = discovered or {}
+        
         self._lock               = threading.Lock()
-        self._all_bases: List[str] = []
+        self._all_bases: List[str] = [self.base_url]
         self._probed_urls: Set[str] = set()   
+        
+        self._waf_detected       = self.discovered.get('waf_detected', False)
+        self._waf_info           = self.discovered.get('waf_info', {})
+        
+        for base in self.discovered.get('api_bases', []):
+            if base not in self._all_bases:
+                self._all_bases.append(base)
 
         self._client = HttpClient(
             timeout=self.timeout,
@@ -201,59 +211,6 @@ class DirectoryListingChecker:
             verify=False,
             retries=0,
         )
-
-    # ── Utils ─────────────────────────────────────────────────────────────────
-
-    def _get_root_domain(self, netloc: str) -> str:
-        parts = netloc.split('.')
-        SECOND_LEVEL_TLDS = {
-            'my.id', 'co.id', 'web.id', 'sch.id', 'ac.id', 'net.id',
-            'co.uk', 'com.au', 'co.nz', 'co.za', 'com.br', 'com.mx',
-        }
-        if len(parts) >= 3:
-            candidate = '.'.join(parts[-2:])
-            if candidate in SECOND_LEVEL_TLDS:
-                return '.'.join(parts[-3:]) if len(parts) >= 3 else netloc
-        return '.'.join(parts[-2:]) if len(parts) >= 2 else netloc
-
-    def _discover_bases(self) -> List[str]:
-        bases = [self.base_url]
-        parsed_main = urlparse(self.base_url)
-        main_root = self._get_root_domain(parsed_main.netloc)
-
-        try:
-            r = self._client.get(self.base_url, headers=HEADERS)
-            if not r or not r.ok:
-                return bases
-
-            js_texts = [r.text]
-            for m in re.finditer(r'src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', r.text):
-                js_url = urljoin(self.base_url, m.group(1))
-                jr = self._client.get(js_url)
-                if jr and jr.ok:
-                    js_texts.append(jr.text)
-
-            all_text = '\n'.join(js_texts)
-            found_urls = re.findall(
-                r'["\`](https?://[a-zA-Z0-9._:-]+)["\`/]', all_text
-            )
-
-            for found_url in found_urls:
-                p = urlparse(found_url)
-                if not p.netloc or p.netloc == parsed_main.netloc:
-                    continue
-                found_root = self._get_root_domain(p.netloc)
-                if found_root != main_root:
-                    continue
-                base = f"{p.scheme}://{p.netloc}"
-                if base not in bases and is_in_scope(base, self.base_url, self.scope_mode):
-                    bases.append(base)
-                    _info(f"Subdomain ditemukan: {base}")
-
-        except Exception:
-            pass
-
-        return bases
 
     def _is_directory_listing(self, body: str) -> bool:
         body_lower = body.lower()
@@ -286,7 +243,7 @@ class DirectoryListingChecker:
         file_names = [i['name'] for i in items if not i['is_dir']]
         dir_names  = [i['name'] for i in items if i['is_dir']]
 
-        _info(f"  └─ {url} → {len(file_names)} file, {len(dir_names)} subdirektori")
+        _info(f"  └─ {url} -> {len(file_names)} file, {len(dir_names)} subdirektori")
 
         # Simpan ke results
         with self._lock:
@@ -399,8 +356,8 @@ class DirectoryListingChecker:
             'findings':         [],
             'error':            None,
             'summary':          {},
-            'waf_detected':     False,
-            'waf_info':         {},
+            'waf_detected':     self._waf_detected,
+            'waf_info':         self._waf_info,
         }
 
         try:
@@ -408,23 +365,28 @@ class DirectoryListingChecker:
             _step(1, 4, "Mengumpulkan target ...")
             _info(f"Base URL: {self.base_url}")
 
-            # Minimal WAF detection (informatif)
-            waf = WAFChecker(self.base_url, self._client, HEADERS)
-            waf_detected = waf.detect()
-            results['waf_detected'] = waf_detected
-            results['waf_info']     = waf.get_info()
-            if waf_detected:
-                waf_name = waf.get_waf_name() or 'Unknown'
+            if self._waf_detected:
+                waf_name = self._waf_info.get('waf_name', 'Unknown')
                 _info(f"WAF terdeteksi: {waf_name} (beberapa path mungkin di-block)")
             else:
                 _info("WAF tidak terdeteksi")
 
-            all_bases = self._discover_bases()
-            self._all_bases = all_bases
-            _info(f"Total bases: {len(all_bases)} → {', '.join(all_bases)}")
+            all_bases = self._all_bases
+            _info(f"Total bases: {len(all_bases)} -> {', '.join(all_bases)}")
+
+            # Extract directory paths from endpoints
+            discovered_dirs = []
+            for ep in self.discovered.get('endpoints', []):
+                p = urlparse(ep)
+                if p.path and p.path.count('/') > 0:
+                    parts = p.path.split('/')
+                    # Get the directory part
+                    dir_path = '/'.join(parts[:-1]) + '/'
+                    if dir_path not in discovered_dirs:
+                        discovered_dirs.append(dir_path)
 
             # Step 2 — Probe semua kombinasi
-            all_paths = list(dict.fromkeys(DIRECTORY_PATHS + self.extra_paths))
+            all_paths = list(dict.fromkeys(DIRECTORY_PATHS + self.extra_paths + discovered_dirs))
             total = len(all_bases) * len(all_paths)
             _step(2, 4, f"Probing {total} direktori "
                         f"({len(all_bases)} base × {len(all_paths)} path) ...")
@@ -479,7 +441,7 @@ class DirectoryListingChecker:
                     n_files = vp.get('file_count', 0)
                     nested  = ' [nested]' if vp.get('is_nested') else ''
                     results['findings'].append(
-                        f"  → [{sev}] [HTTP {vp['status_code']}] {vp['url']}"
+                        f"  -> [{sev}] [HTTP {vp['status_code']}] {vp['url']}"
                         f" ({n_files} file){nested}"
                     )
                     for nf in vp.get('notable_files', []):

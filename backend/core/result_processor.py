@@ -262,7 +262,18 @@ def process_http_security_results(http_results: dict, result_id: int):
             issue_messages = []
             best_vuln_key  = 'cors_misconfiguration'
 
-            for issue in cors_issues:
+            # Filter: abaikan issue yang hanya informational (severity=info, tanpa vuln_key)
+            # Contoh: "cors_not_configured" — CORS tidak aktif = default aman, bukan vulnerability
+            actionable_issues = [
+                i for i in cors_issues
+                if not (
+                    isinstance(i, dict)
+                    and i.get('severity') == 'info'
+                    and not i.get('vuln_key')
+                )
+            ]
+
+            for issue in actionable_issues:
                 if isinstance(issue, dict):
                     issue_messages.append(issue.get('message', ''))
                     # Simpan vuln individual per CORS issue (jika punya vuln_key)
@@ -276,8 +287,8 @@ def process_http_security_results(http_results: dict, result_id: int):
                 else:
                     issue_messages.append(str(issue))
 
-            # Fallback: simpan vuln generik jika belum ada yang tersimpan
-            if not any(isinstance(i, dict) and i.get('vuln_key') for i in cors_issues):
+            # Fallback: simpan vuln generik jika ada issue actionable tapi belum ada yang tersimpan
+            if actionable_issues and not any(isinstance(i, dict) and i.get('vuln_key') for i in actionable_issues):
                 _save_vuln_from_profile(
                     best_vuln_key, result_id,
                     affected='CORS Policy',

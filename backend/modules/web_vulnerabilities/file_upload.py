@@ -7,33 +7,10 @@ from urllib.parse import urljoin, urlparse
 
 from helpers.http_client import HttpClient, HostDeadException
 from helpers.waf_checker import WAFChecker
-from helpers.spa_crawler import SPACrawler
 from helpers.scope import is_in_scope
-from helpers.parsers import (
-    extract_paths_from_js,
-    extract_all_js_paths,
-    normalize_url,
-    spa_confidence,
-)
-try:
-    from helpers.browser import crawl_spa
-except ImportError:
-    crawl_spa = None
+from helpers.parsers import normalize_url
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-try:
-    from playwright.sync_api import sync_playwright
-    PLAYWRIGHT_AVAILABLE = True
-except ImportError:
-    PLAYWRIGHT_AVAILABLE = False
-
-try:
-    from bs4 import BeautifulSoup
-    BS4_AVAILABLE = True
-except ImportError:
-    BS4_AVAILABLE = False
-
 
 # ── Terminal output helpers ───────────────────────────────────────────────────
 
@@ -185,19 +162,31 @@ def _classify_severity(ext: str, accessible: bool) -> str:
 class FileUploadChecker:
     def __init__(self, url: str, timeout: float = 10.0,
                  cookies: Optional[Dict] = None,
-                 scope_mode: str = 'wildcard'):
+                 scope_mode: str = 'wildcard',
+                 discovered: Optional[Dict] = None):
         self.base_url        = url.rstrip('/')
         self.timeout         = int(timeout)
         self.cookies         = cookies or {}
         self.scope_mode      = scope_mode
+        self.discovered      = discovered or {}
+        
         self._uid            = uuid.uuid4().hex[:8]
-        self._is_spa         = False
-        self._pw_used        = False
-        self._waf_detected   = False
-        self._waf_info: Dict = {}
-        self._api_bases: List[str]   = [self.base_url]
-        self._extra_paths: List[str] = []
+        self._is_spa         = self.discovered.get('is_spa', False)
+        self._pw_used        = self.discovered.get('playwright_used', False)
+        self._waf_detected   = self.discovered.get('waf_detected', False)
+        self._waf_info       = self.discovered.get('waf_info', {})
         self._vuln_found     = threading.Event()
+        
+        self._api_bases: List[str]   = [self.base_url]
+        for base in self.discovered.get('api_bases', []):
+            if base not in self._api_bases:
+                self._api_bases.append(base)
+                
+        self._extra_paths: List[str] = []
+        for ep in self.discovered.get('endpoints', []):
+            p = urlparse(ep).path
+            if p and ('upload' in p.lower() or 'file' in p.lower()):
+                self._extra_paths.append(p)
 
         self._client = HttpClient(
             timeout=self.timeout, headers=HEADERS,
@@ -231,112 +220,6 @@ class FileUploadChecker:
             return any(k in r.text.lower() for k in CF_BLOCK_BODY)
         return WAFChecker.is_waf_block(r)
 
-    def _extract_base(self, url: str) -> Optional[str]:
-        try:
-            p = urlparse(url)
-            if p.scheme and p.netloc:
-                return f"{p.scheme}://{p.netloc}"
-        except Exception:
-            pass
-        return None
-
-    # ── Step 1: Discover API bases ────────────────────────────────────────────
-
-    def _discover_api_bases(self):
-        r = self._get(self.base_url)
-        if r is None:
-            return
-
-        html       = r.text
-        confidence = spa_confidence(html)
-
-        if confidence >= 2 and PLAYWRIGHT_AVAILABLE:
-            self._is_spa = True
-            _info("SPA terdeteksi, crawling dengan Playwright ...")
-            try:
-                pw = crawl_spa(
-                    self.base_url, block_images=True,
-                    initial_cookies=[
-                        {"name": k, "value": v, "url": self.base_url}
-                        for k, v in self.cookies.items()
-                    ] if self.cookies else None,
-                )
-                html          = pw.get("html", html)
-                self._pw_used = True
-
-                for call in pw.get("api_calls", []):
-                    call_url = call.get("url", "")
-                    base     = self._extract_base(call_url)
-                    if base and base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
-                        self._api_bases.append(base)
-                    p = urlparse(call_url)
-                    if p.path and ('upload' in p.path.lower() or 'file' in p.path.lower()):
-                        if p.path not in self._extra_paths:
-                            self._extra_paths.append(p.path)
-            except Exception as e:
-                _warn(f"Playwright gagal ({e}), lanjut tanpa SPA crawl")
-
-        self._scan_js_sources(html)
-
-        if len(self._api_bases) > 1:
-            _info(f"API base ditemukan: {', '.join(self._api_bases[1:])}")
-
-    def _scan_js_sources(self, html: str):
-        js_urls = []
-
-        if BS4_AVAILABLE:
-            soup = BeautifulSoup(html, 'html.parser')
-            for tag in soup.find_all('script'):
-                src = tag.get('src', '').strip()
-                if src:
-                    js_urls.append(normalize_url(src, self.base_url))
-            for link in soup.find_all('link'):
-                rel  = ' '.join(link.get('rel', [])).lower()
-                href = link.get('href', '').strip()
-                if any(x in rel for x in ['modulepreload', 'preload']) \
-                        and href.endswith(('.js', '.mjs')):
-                    js_urls.append(normalize_url(href, self.base_url))
-        else:
-            for m in re.finditer(r'src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', html):
-                js_urls.append(normalize_url(m.group(1), self.base_url))
-
-        self._extract_from_text(html)
-
-        for js_url in list(dict.fromkeys(js_urls)):
-            jr = self._get(js_url)
-            if jr is None or not jr.ok:
-                continue
-            self._extract_from_text(jr.text)
-            for path in extract_paths_from_js(jr.text):
-                if ('upload' in path.lower() or 'file' in path.lower()) \
-                        and path not in self._extra_paths:
-                    self._extra_paths.append(path)
-
-        for path in extract_all_js_paths(html):
-            if ('upload' in path.lower() or 'file' in path.lower()) \
-                    and path not in self._extra_paths:
-                self._extra_paths.append(path)
-
-    def _extract_from_text(self, text: str):
-        for m in re.finditer(
-            r'["\`](https?://[a-zA-Z0-9._-]+(?:/[a-zA-Z0-9._/?=&%-]*)?)["\`]',
-            text
-        ):
-            url = m.group(1)
-            if 'api' in url.lower() or 'upload' in url.lower():
-                base = self._extract_base(url)
-                if base and base not in self._api_bases and is_in_scope(base, self.base_url, self.scope_mode):
-                    self._api_bases.append(base)
-
-        for m in re.finditer(
-            r'["\`](/(?:api/)?[a-zA-Z0-9_/-]*'
-            r'(?:upload|file|media|image|avatar|attachment)'
-            r'[a-zA-Z0-9_/-]*)["\`]',
-            text, re.I
-        ):
-            path = m.group(1)
-            if path not in self._extra_paths:
-                self._extra_paths.append(path)
 
     # ── Step 2: Probe upload endpoints ────────────────────────────────────────
 
@@ -387,6 +270,12 @@ class FileUploadChecker:
                 candidates.append(f"{base.rstrip('/')}{path}")
             for path in self._extra_paths:
                 candidates.append(normalize_url(path, base))
+                
+        # Include any discovered forms with file upload inputs
+        for form in self.discovered.get('forms', []):
+            if form.get('action') and any(inp.get('type') == 'file' for inp in form.get('inputs', [])):
+                candidates.append(form['action'])
+                
         candidates = list(dict.fromkeys(candidates))
 
         _info(f"Probing {len(candidates)} kandidat endpoint ...")
@@ -506,7 +395,7 @@ class FileUploadChecker:
                     severity = _classify_severity(ext, accessible)
                     parsed   = urlparse(upload_url)
 
-                    _warn(f"[{severity}] Upload berhasil → "
+                    _warn(f"[{severity}] Upload berhasil -> "
                           f"field={field} | ext=.{ext} | {upload_url}")
                     if resolved:
                         _ok(f"File accessible: {resolved} (exec={accessible})")
@@ -534,7 +423,7 @@ class FileUploadChecker:
                     results['findings'].append(
                         f"[{severity}] Upload file berbahaya diterima: "
                         f"{upload_url} (field={field}, ext=.{ext})"
-                        + (f" → {resolved}" if resolved else "")
+                        + (f" -> {resolved}" if resolved else "")
                     )
                     self._vuln_found.set()
                     break
@@ -559,34 +448,25 @@ class FileUploadChecker:
     def run(self) -> Dict[str, Any]:
         results = {
             'vulnerable':        False,
-            'vulnerable_paths':  [],        # ← rename dari vulnerable_uploads
+            'vulnerable_paths':  [],
             'directory_listing': [],
             'findings':          [],
             'error':             None,
-            'summary':           {},        # ← tambah
-            'spa_detected':      False,
-            'playwright_used':   False,
-            'waf_detected':      False,
-            'waf_info':          {},
+            'summary':           {},
+            'spa_detected':      self._is_spa,
+            'playwright_used':   self._pw_used,
+            'waf_detected':      self._waf_detected,
+            'waf_info':          self._waf_info,
         }
 
         try:
-            # ── WAF Detection ─────────────────────────────────────────────
-            waf = WAFChecker(self.base_url, self._client)
-            self._waf_detected      = waf.detect()
-            self._waf_info          = waf.get_info()
-            results['waf_detected'] = self._waf_detected
-            results['waf_info']     = self._waf_info
-
             waf_name   = self._waf_info.get('waf_name', '?')
             waf_status = f"terdeteksi ({waf_name})" if self._waf_detected else "tidak terdeteksi"
-            pw_status  = "tersedia" if PLAYWRIGHT_AVAILABLE else "tidak tersedia"
-            _info(f"WAF: {waf_status} | Playwright: {pw_status}")
+            _info(f"WAF: {waf_status}")
 
-            _step(1, 3, "Mengumpulkan API base & endpoint ...")
-            self._discover_api_bases()
-            results['spa_detected']    = self._is_spa
-            results['playwright_used'] = self._pw_used
+            _step(1, 3, "Menggunakan API base & endpoint (dari CrawlerHelper) ...")
+            if len(self._api_bases) > 1:
+                _info(f"API base ditemukan: {', '.join(self._api_bases[1:])}")
 
             _step(2, 3, "Mencari endpoint upload ...")
             endpoints = list(dict.fromkeys(self._discover_upload_endpoints()))

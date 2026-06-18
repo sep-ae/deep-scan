@@ -201,7 +201,7 @@ WEBVULN_PROFILES = {
         "recommendation": (
             "1) Whitelist URL redirect yang diizinkan — hanya izinkan domain internal. "
             "2) Jangan terima URL absolut dari parameter pada endpoint login/callback. "
-            "3) Gunakan mapping internal (ID → URL) sebagai alternatif parameter redirect langsung. "
+            "3) Gunakan mapping internal (ID -> URL) sebagai alternatif parameter redirect langsung. "
             "4) Validasi host tujuan sebelum melakukan redirect post-authentication. "
             "5) Tolak redirect ke URL yang mengandung @ atau encoded characters."
         ),
@@ -245,7 +245,7 @@ WEBVULN_PROFILES = {
         "recommendation": (
             "1) Whitelist semua URL redirect yang diizinkan. "
             "2) Jangan gunakan input pengguna secara langsung sebagai tujuan redirect. "
-            "3) Gunakan mapping internal (ID → URL) sebagai alternatif parameter redirect langsung. "
+            "3) Gunakan mapping internal (ID -> URL) sebagai alternatif parameter redirect langsung. "
             "4) Validasi bahwa URL tujuan berada dalam domain yang sama sebelum redirect."
         ),
         "metrics": {

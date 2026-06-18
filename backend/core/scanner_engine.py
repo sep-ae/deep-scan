@@ -9,6 +9,7 @@ from core.phase_runners import (
     run_tech_fingerprint, run_http_security_check, run_auth_protection,
     run_web_vulnerabilities,
 )
+from helpers.crawler_helper import CrawlerHelper
 from core.result_processor import (
     process_generic_results, process_http_security_results,
     process_auth_results, process_web_vuln_results,
@@ -76,17 +77,26 @@ class ScannerEngine:
             self.update_progress(38, "Technology fingerprinting...")
             tech_results = run_tech_fingerprint(self.target_url)
 
+            self.update_progress(45, "Crawling application endpoints...")
+            crawler = CrawlerHelper(
+                self.target_url,
+                cookies=getattr(self.scan, 'cookies', None),
+                scope_mode=getattr(self.scan, 'scope_mode', 'wildcard')
+            )
+            discovered = crawler.crawl()
+
             self.update_progress(48, "HTTP Security Configuration Check...")
-            http_results = run_http_security_check(self.target_url)
+            http_results = run_http_security_check(self.target_url, discovered=discovered)
 
             self.update_progress(57, "Protection & Authentication Testing...")
-            auth_results = run_auth_protection(self.target_url)
+            auth_results = run_auth_protection(self.target_url, discovered=discovered)
 
             self.update_progress(65, "Web Vulnerability Scanning...")
             web_vuln_results = run_web_vulnerabilities(
                 self.target_url,
                 cookies=getattr(self.scan, 'cookies', None),
                 scope_mode=getattr(self.scan, 'scope_mode', 'wildcard'),
+                discovered=discovered
             )
 
             self.update_progress(80, "Saving results to database...")

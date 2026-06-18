@@ -185,7 +185,7 @@ class SubdomainFinder:
         try:
             resp = requests.get(
                 f"https://crt.sh/?q=%.{self.domain}&output=json",
-                timeout=8,  # turun dari 15s → 8s
+                timeout=8,  # turun dari 15s -> 8s
                 verify=False
             )
             if resp.status_code == 200:

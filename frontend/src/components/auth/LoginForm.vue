@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import api from '@/services/api'
@@ -12,6 +12,8 @@ const router = useRouter()
 const identifier = ref('') 
 const password = ref('')
 const isLoading = ref(false)
+const isGoogleLoading = ref(false)
+const googleBtnRef = ref(null)
 
 const handleLogin = async () => {
   if (!identifier.value || !password.value) {
@@ -58,6 +60,80 @@ const handleLogin = async () => {
     isLoading.value = false
   }
 }
+
+const handleGoogleCallback = async (response) => {
+  try {
+    isGoogleLoading.value = true
+
+    const res = await api.post('/auth/google', {
+      credential: response.credential
+    })
+
+    if (!res.data?.access_token) {
+      toast('Login Google Gagal', {
+        description: res.data?.msg || 'Login Google gagal.'
+      })
+      return
+    }
+
+    localStorage.setItem('token', res.data.access_token)
+
+    if (res.data.user) {
+      localStorage.setItem('user', JSON.stringify(res.data.user))
+    }
+
+    toast('Login Google Berhasil', {
+      description: 'Anda akan diarahkan ke dashboard.'
+    })
+
+    router.push('/dashboard')
+
+  } catch (error) {
+    const msg =
+      error.response?.data?.msg ||
+      'Login Google Gagal. Coba lagi nanti.'
+
+    toast('Login Google Gagal', { description: msg })
+  } finally {
+    isGoogleLoading.value = false
+  }
+}
+
+onMounted(() => {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  if (!clientId) {
+    console.error('[Google Login] VITE_GOOGLE_CLIENT_ID belum di-set di .env!')
+    return
+  }
+
+  // Tunggu Google GIS script loaded
+  const initGoogle = () => {
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleCallback,
+        auto_select: false,
+        cancel_on_tap_outside: true
+      })
+
+      if (googleBtnRef.value) {
+        window.google.accounts.id.renderButton(googleBtnRef.value, {
+          theme: 'outline',
+          size: 'large',
+          width: '100%',
+          text: 'signin_with',
+          shape: 'rectangular',
+          logo_alignment: 'left'
+        })
+      }
+    } else {
+      // Retry kalau script belum loaded
+      setTimeout(initGoogle, 200)
+    }
+  }
+
+  initGoogle()
+})
 </script>
 
 <template>
@@ -83,7 +159,7 @@ const handleLogin = async () => {
               type="text"
               placeholder="admin atau admin@email.com"
               v-model="identifier"
-              :disabled="isLoading"
+              :disabled="isLoading || isGoogleLoading"
               required
               class="focus-visible:ring-blue-600"
             />
@@ -96,7 +172,7 @@ const handleLogin = async () => {
               type="password"
               placeholder="Masukkan password Anda"
               v-model="password"
-              :disabled="isLoading"
+              :disabled="isLoading || isGoogleLoading"
               required
               class="focus-visible:ring-blue-600"
             />
@@ -105,11 +181,30 @@ const handleLogin = async () => {
           <Button
             type="submit"
             class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md"
-            :disabled="isLoading"
+            :disabled="isLoading || isGoogleLoading"
           >
             <span v-if="isLoading">Memproses...</span>
             <span v-else>Masuk ke Dashboard</span>
           </Button>
+
+          <!-- Divider -->
+          <div class="relative my-4">
+            <div class="absolute inset-0 flex items-center">
+              <span class="w-full border-t border-neutral-200"></span>
+            </div>
+            <div class="relative flex justify-center text-xs uppercase">
+              <span class="bg-white px-2 text-neutral-500">atau</span>
+            </div>
+          </div>
+
+          <!-- Google Sign-In Button -->
+          <div class="flex justify-center">
+            <div ref="googleBtnRef" id="google-signin-btn"></div>
+          </div>
+
+          <p v-if="isGoogleLoading" class="text-center text-sm text-blue-600">
+            Memproses login Google...
+          </p>
 
           <p class="text-center text-sm text-neutral-500">
             Belum punya akun?

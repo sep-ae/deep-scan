@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from extensions import db, limiter
 from models import User
 from flask_jwt_extended import create_access_token
@@ -222,3 +222,116 @@ def login():
 
     logger.warning(f"[LOGIN FAILED] identifier={login_input} | IP={request.remote_addr}")
     return jsonify({"msg": "Username/Email atau Password Salah"}), 401
+
+
+@auth_bp.route('/google', methods=['POST'])
+@limiter.limit("10 per minute")
+def google_login():
+    """
+    Login dengan Google
+    ---
+    tags:
+      - Authentication
+    summary: Login menggunakan akun Google (OAuth 2.0)
+    description: Menerima Google ID Token dari frontend, verifikasi, dan kembalikan JWT.
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - credential
+          properties:
+            credential:
+              type: string
+              description: Google ID Token dari Google Identity Services
+    responses:
+      200:
+        description: Login Google Sukses
+      400:
+        description: Token tidak diberikan
+      401:
+        description: Token tidak valid atau kadaluarsa
+      500:
+        description: Internal Server Error
+    """
+    data = request.get_json(silent=True)
+    if not data or not data.get('credential'):
+        return jsonify({"msg": "Token Google tidak valid"}), 400
+
+    try:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
+
+        client_id = current_app.config.get('GOOGLE_CLIENT_ID', '')
+        if not client_id:
+            logger.error("[GOOGLE LOGIN] GOOGLE_CLIENT_ID belum di-set!")
+            return jsonify({"msg": "Google Login belum dikonfigurasi di server"}), 500
+
+        idinfo = id_token.verify_oauth2_token(
+            data['credential'],
+            google_requests.Request(),
+            client_id
+        )
+
+        google_id = idinfo['sub']
+        email = idinfo.get('email', '')
+        name = idinfo.get('name', email.split('@')[0] if email else 'user')
+
+        if not email:
+            return jsonify({"msg": "Akun Google tidak memiliki email"}), 400
+
+        # Cek user existing berdasarkan google_id atau email
+        user = User.query.filter(
+            or_(User.google_id == google_id, User.email == email)
+        ).first()
+
+        if not user:
+            # Auto-register user baru via Google
+            # Buat username unik dari nama
+            base_username = re.sub(r'[^a-zA-Z0-9_]', '_', name)[:40]
+            username = base_username
+            counter = 1
+            while User.query.filter_by(username=username).first():
+                username = f"{base_username}_{counter}"
+                counter += 1
+
+            user = User(
+                username=username,
+                email=email,
+                auth_provider='google',
+                google_id=google_id
+            )
+            db.session.add(user)
+            db.session.commit()
+            logger.info(f"[GOOGLE REGISTER] email={email} | IP={request.remote_addr}")
+
+        elif not user.google_id:
+            # Link akun lokal yang sudah ada dengan Google
+            user.google_id = google_id
+            if user.auth_provider == 'local':
+                user.auth_provider = 'google'
+            db.session.commit()
+            logger.info(f"[GOOGLE LINK] user_id={user.user_id} linked to Google | IP={request.remote_addr}")
+
+        access_token = create_access_token(identity=str(user.user_id))
+        logger.info(f"[GOOGLE LOGIN SUCCESS] user_id={user.user_id} | IP={request.remote_addr}")
+
+        return jsonify({
+            "msg": "Login Google Sukses",
+            "access_token": access_token,
+            "user": {
+                "id": user.user_id,
+                "username": user.username,
+                "email": user.email
+            }
+        }), 200
+
+    except ValueError as e:
+        logger.warning(f"[GOOGLE LOGIN FAILED] Invalid token: {e} | IP={request.remote_addr}")
+        return jsonify({"msg": "Token Google tidak valid atau sudah kadaluarsa"}), 401
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"[GOOGLE LOGIN ERROR] {e} | IP={request.remote_addr}")
+        return jsonify({"msg": "Terjadi kesalahan server"}), 500

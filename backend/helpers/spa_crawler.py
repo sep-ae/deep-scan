@@ -77,7 +77,7 @@ class SPACrawler:
     Flow:
         1. Fetch halaman utama
         2. Cek SPA confidence
-        3. Jika SPA → crawl dengan Playwright (jika tersedia)
+        3. Jika SPA -> crawl dengan Playwright (jika tersedia)
         4. Fallback ke JS parsing jika Playwright tidak tersedia
         5. Extract paths, API bases, dan cookies
     """
