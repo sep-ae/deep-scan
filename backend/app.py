@@ -110,8 +110,9 @@ def _register_error_handlers(app):
         return jsonify({"msg": "Terjadi kesalahan server"}), 500
 
 
+app = create_app()
+
 if __name__ == '__main__':
-    app = create_app()
     app.run(
         debug=True,
         port=5000,
