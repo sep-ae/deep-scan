@@ -5,12 +5,8 @@ services:
     build: .
     container_name: deepscan_backend
     restart: always
-    ports:
-      - "8000:8000"
-    environment:
-      - JWT_SECRET=your_super_secret_jwt_key
-      - JWT_ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      # Tambahkan env vars lain jika ada
+    network_mode: "host" # Supaya bisa connect ke database MySQL di localhost VPS
+    env_file:
+      - .env
     volumes:
       - ./data:/app/data
