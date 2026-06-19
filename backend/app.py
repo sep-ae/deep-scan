@@ -25,7 +25,12 @@ def create_app():
 
     CORS(app, resources={
         r"/api/*": {
-            "origins": ["http://localhost:5173", "http://localhost:3000"],
+            "origins": [
+                "http://localhost:5173", 
+                "http://localhost:3000",
+                "https://deepscan.web.id",
+                "https://www.deepscan.web.id"
+            ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
             "supports_credentials": True
