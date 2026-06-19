@@ -19,8 +19,11 @@ import { Separator } from '@/components/ui/separator'
 import {
   Scan, Loader2, CheckCircle2, Globe, Shield,
   CircleUser, Menu, Package2, Home, History,
-  Crosshair, Globe2, XCircle, AlertTriangle, LogOut
+  Crosshair, Globe2, XCircle, AlertTriangle, LogOut, Sun, Moon
 } from 'lucide-vue-next'
+
+import { useDarkMode } from '@/composables/useDarkMode'
+const { isDark, toggleDark } = useDarkMode()
 
 import { onMounted } from 'vue'
 
@@ -45,11 +48,14 @@ let pollInterval = 8000
 const MIN_INTERVAL = 3000
 const MAX_INTERVAL = 15000
 
+const userEmail = ref('user@deepscan.local')
+
 const storedUser = localStorage.getItem('user')
 if (storedUser) {
   try {
     const user = JSON.parse(storedUser)
     username.value = user.username || 'Pengguna'
+    userEmail.value = user.email || 'user@deepscan.local'
   } catch (e) {
     console.error('Error parsing user data:', e)
   }
@@ -211,9 +217,9 @@ const isActive = (path) => route.path === path
 </script>
 
 <template>
-  <div class="flex min-h-screen w-full flex-col bg-neutral-50/50">
+  <div class="flex min-h-screen w-full flex-col bg-neutral-50/50 dark:bg-slate-950 transition-colors duration-300">
 
-    <header class="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+    <header class="sticky top-0 z-50 flex h-16 items-center gap-4 border-b border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 md:px-6">
 
       <nav class="hidden flex-col gap-6 text-lg font-medium md:flex md:flex-row md:items-center md:gap-5 md:text-sm lg:gap-6">
         <a href="#" class="flex items-center gap-2 text-lg font-semibold md:text-base">
@@ -248,14 +254,14 @@ const isActive = (path) => route.path === path
         </SheetTrigger>
         <SheetContent side="left" class="p-0 gap-0">
           <div class="flex flex-col h-full">
-            <div class="px-6 py-5 bg-white border-b border-neutral-100">
+            <div class="px-6 py-5 bg-white dark:bg-slate-900 border-b border-neutral-100 dark:border-slate-800">
               <div class="flex items-center gap-3">
-                <div class="h-11 w-11 rounded-2xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
-                  <Package2 class="h-5 w-5 text-blue-600" />
+                <div class="h-11 w-11 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center ring-1 ring-blue-100 dark:ring-blue-800">
+                  <Package2 class="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <h2 class="text-neutral-900 font-bold text-lg leading-tight">Deep Scan</h2>
-                  <p class="text-neutral-500 text-xs">Security Scanner</p>
+                  <h2 class="text-neutral-900 dark:text-white font-bold text-lg leading-tight">Deep Scan</h2>
+                  <p class="text-neutral-500 dark:text-slate-400 text-xs">Security Scanner</p>
                 </div>
               </div>
             </div>
@@ -282,13 +288,13 @@ const isActive = (path) => route.path === path
             </nav>
             <div class="px-4 pb-5">
               <Separator class="mb-4" />
-              <div class="flex items-center gap-3 p-3 rounded-2xl bg-neutral-50 border border-neutral-100 mb-3">
+              <div class="flex items-center gap-3 p-3 rounded-2xl bg-neutral-50 dark:bg-slate-800/50 border border-neutral-100 dark:border-slate-700 mb-3">
                 <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-md">
                   <span class="text-white font-bold text-sm">{{ username.charAt(0).toUpperCase() }}</span>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="font-semibold text-sm text-neutral-900 truncate">{{ username }}</p>
-                  <p class="text-xs text-neutral-500">Deep-Scan User</p>
+                  <p class="font-semibold text-sm text-neutral-900 dark:text-white truncate">{{ username }}</p>
+                  <p class="text-xs text-neutral-500 dark:text-slate-400 truncate">{{ userEmail }}</p>
                 </div>
               </div>
               <button @click="handleLogout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 hover:bg-red-50 transition-all duration-200 text-sm font-medium">
@@ -304,18 +310,23 @@ const isActive = (path) => route.path === path
 
 
       <div class="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
-        <div class="ml-auto"></div>
+        <div class="ml-auto flex items-center gap-2">
+          <button @click="toggleDark" class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" :title="isDark ? 'Light mode' : 'Dark mode'">
+            <Sun v-if="isDark" class="h-4 w-4 text-amber-500" />
+            <Moon v-else class="h-4 w-4 text-slate-500" />
+          </button>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger as-child>
-            <Button variant="secondary" size="icon" class="rounded-full">
-              <CircleUser class="h-5 w-5" />
+            <Button variant="secondary" class="rounded-full h-10 w-10 p-0 overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 border-0 hover:opacity-90">
+              <span class="text-white font-bold">{{ username.charAt(0).toUpperCase() }}</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-56">
-            <DropdownMenuLabel>
-              <div class="flex flex-col space-y-1">
-                <p class="text-sm font-medium">{{ username }}</p>
-                <p class="text-xs text-muted-foreground">Deep-Scan User</p>
+          <DropdownMenuContent align="end" class="w-64 dark:bg-slate-900 dark:border-slate-800">
+            <DropdownMenuLabel class="p-4">
+              <div class="flex flex-col space-y-1.5">
+                <p class="text-sm font-semibold text-neutral-900 dark:text-white leading-none">{{ username }}</p>
+                <p class="text-xs text-neutral-500 dark:text-slate-400 leading-none">{{ userEmail }}</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -331,12 +342,12 @@ const isActive = (path) => route.path === path
 
       <div class="max-w-2xl mx-auto mb-6">
         <div class="flex items-center gap-3 mb-2">
-          <div class="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center">
-            <Scan class="h-6 w-6 text-blue-600" />
+          <div class="h-12 w-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+            <Scan class="h-6 w-6 text-blue-600 dark:text-blue-400" />
           </div>
           <div>
-            <h1 class="text-2xl font-bold text-neutral-900">Website Scanner</h1>
-            <p class="text-sm text-neutral-600">Deteksi kerentanan keamanan secara otomatis</p>
+            <h1 class="text-2xl font-bold text-neutral-900 dark:text-white">Website Scanner</h1>
+            <p class="text-sm text-neutral-600 dark:text-slate-400">Deteksi kerentanan keamanan secara otomatis</p>
           </div>
         </div>
       </div>
@@ -349,14 +360,14 @@ const isActive = (path) => route.path === path
           <p class="text-sm text-neutral-500">Memuat...</p>
         </div>
 
-        <Card class="border-none shadow-lg" v-else-if="!isScanning">
+        <Card class="border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm" v-else-if="!isScanning">
           <CardHeader>
-            <CardTitle class="text-lg">Mulai Pemindaian Baru</CardTitle>
-            <CardDescription>Masukkan URL website yang ingin dipindai</CardDescription>
+            <CardTitle class="text-lg dark:text-white">Mulai Pemindaian Baru</CardTitle>
+            <CardDescription class="dark:text-slate-400">Masukkan URL website yang ingin dipindai</CardDescription>
           </CardHeader>
           <CardContent class="space-y-4">
             <div class="space-y-2">
-              <Label for="url" class="flex items-center gap-2">
+              <Label for="url" class="flex items-center gap-2 dark:text-slate-300">
                 <Globe class="h-4 w-4" />
                 Target URL
               </Label>
@@ -366,15 +377,15 @@ const isActive = (path) => route.path === path
                 type="text"
                 placeholder="https://example.com"
                 :disabled="isScanning"
-                class="focus-visible:ring-blue-600"
+                class="focus-visible:ring-blue-600 bg-neutral-50 dark:bg-slate-800 border-neutral-200 dark:border-slate-700 dark:text-white dark:placeholder:text-slate-500"
                 @keyup.enter="handleStartScan"
               />
-              <p class="text-xs text-neutral-500">Contoh: https://example.com atau example.com</p>
+              <p class="text-xs text-neutral-500 dark:text-slate-400">Contoh: https://example.com atau example.com</p>
             </div>
 
             <!-- Scope Mode -->
             <div class="space-y-2">
-              <Label class="flex items-center gap-2">
+              <Label class="flex items-center gap-2 dark:text-slate-300">
                 <Crosshair class="h-4 w-4" />
                 Scope Domain
               </Label>
@@ -383,8 +394,8 @@ const isActive = (path) => route.path === path
                   :class="[
                     'flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all',
                     scopeMode === 'strict'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-neutral-200 hover:border-neutral-300'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-neutral-200 dark:border-slate-700 hover:border-neutral-300 dark:hover:border-slate-600 dark:bg-slate-800/50'
                   ]"
                 >
                   <input
@@ -394,16 +405,16 @@ const isActive = (path) => route.path === path
                     class="mt-1 accent-blue-600"
                   />
                   <div>
-                    <p class="text-sm font-medium text-neutral-900">Domain Utama</p>
-                    <p class="text-xs text-neutral-500">Hanya scan domain yang diinput</p>
+                    <p class="text-sm font-medium text-neutral-900 dark:text-white">Domain Utama</p>
+                    <p class="text-xs text-neutral-500 dark:text-slate-400">Hanya scan domain yang diinput</p>
                   </div>
                 </label>
                 <label
                   :class="[
                     'flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all',
                     scopeMode === 'wildcard'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-neutral-200 hover:border-neutral-300'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-neutral-200 dark:border-slate-700 hover:border-neutral-300 dark:hover:border-slate-600 dark:bg-slate-800/50'
                   ]"
                 >
                   <input
@@ -413,8 +424,8 @@ const isActive = (path) => route.path === path
                     class="mt-1 accent-blue-600"
                   />
                   <div>
-                    <p class="text-sm font-medium text-neutral-900">Termasuk Subdomain</p>
-                    <p class="text-xs text-neutral-500">Scan semua subdomain terkait</p>
+                    <p class="text-sm font-medium text-neutral-900 dark:text-white">Termasuk Subdomain</p>
+                    <p class="text-xs text-neutral-500 dark:text-slate-400">Scan semua subdomain terkait</p>
                   </div>
                 </label>
               </div>
@@ -422,7 +433,7 @@ const isActive = (path) => route.path === path
             <Button
               @click="handleStartScan"
               :disabled="!targetUrl.trim() || isScanning"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md dark:bg-blue-600 dark:hover:bg-blue-700"
             >
               <Scan class="h-4 w-4 mr-2" />
               Mulai Pemindaian
@@ -430,52 +441,52 @@ const isActive = (path) => route.path === path
           </CardContent>
         </Card>
 
-        <Card class="border-none shadow-lg" v-if="isScanning">
+        <Card class="border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm" v-if="isScanning">
           <CardHeader>
-            <CardTitle class="text-lg flex items-center gap-2">
-              <Loader2 class="h-5 w-5 animate-spin text-blue-600" />
+            <CardTitle class="text-lg flex items-center gap-2 dark:text-white">
+              <Loader2 class="h-5 w-5 animate-spin text-blue-600 dark:text-blue-400" />
               Pemindaian Sedang Berjalan...
             </CardTitle>
-            <CardDescription class="mt-1">{{ targetUrl }}</CardDescription>
+            <CardDescription class="mt-1 dark:text-slate-400">{{ targetUrl }}</CardDescription>
           </CardHeader>
           <CardContent class="space-y-6">
             <div class="space-y-2">
               <div class="flex items-center justify-between text-sm">
-                <span class="text-neutral-600">Progress</span>
-                <span class="font-semibold text-blue-600">{{ scanProgress }}%</span>
+                <span class="text-neutral-600 dark:text-slate-400">Progress</span>
+                <span class="font-semibold text-blue-600 dark:text-blue-400">{{ scanProgress }}%</span>
               </div>
               <Progress :model-value="scanProgress" class="h-2" />
             </div>
 
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p class="text-sm font-medium text-blue-900">{{ currentPhase }}</p>
+            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+              <p class="text-sm font-medium text-blue-900 dark:text-blue-300">{{ currentPhase }}</p>
             </div>
 
             <div class="space-y-3">
-              <div class="flex items-center gap-2 text-sm" :class="scanProgress >= 10 ? 'text-green-600' : 'text-neutral-400'">
+              <div class="flex items-center gap-2 text-sm" :class="scanProgress >= 10 ? 'text-green-600 dark:text-green-400' : 'text-neutral-400 dark:text-slate-500'">
                 <CheckCircle2 v-if="scanProgress >= 25" class="h-4 w-4" />
                 <Loader2 v-else class="h-4 w-4 animate-spin" />
                 <span>Reconnaissance & Information Gathering</span>
               </div>
-              <div class="flex items-center gap-2 text-sm" :class="scanProgress >= 40 ? 'text-green-600' : 'text-neutral-400'">
+              <div class="flex items-center gap-2 text-sm" :class="scanProgress >= 40 ? 'text-green-600 dark:text-green-400' : 'text-neutral-400 dark:text-slate-500'">
                 <CheckCircle2 v-if="scanProgress >= 60" class="h-4 w-4" />
                 <Loader2 v-else class="h-4 w-4" :class="scanProgress >= 10 ? 'animate-spin' : ''" />
                 <span>HTTP Security Configuration Check</span>
               </div>
-              <div class="flex items-center gap-2 text-sm" :class="scanProgress >= 60 ? 'text-green-600' : 'text-neutral-400'">
+              <div class="flex items-center gap-2 text-sm" :class="scanProgress >= 60 ? 'text-green-600 dark:text-green-400' : 'text-neutral-400 dark:text-slate-500'">
                 <CheckCircle2 v-if="scanProgress >= 85" class="h-4 w-4" />
                 <Loader2 v-else class="h-4 w-4" :class="scanProgress >= 40 ? 'animate-spin' : ''" />
                 <span>Protection & Authentication Testing</span>
               </div>
-              <div class="flex items-center gap-2 text-sm" :class="scanProgress >= 85 ? 'text-green-600' : 'text-neutral-400'">
+              <div class="flex items-center gap-2 text-sm" :class="scanProgress >= 85 ? 'text-green-600 dark:text-green-400' : 'text-neutral-400 dark:text-slate-500'">
                 <CheckCircle2 v-if="scanProgress >= 100" class="h-4 w-4" />
                 <Loader2 v-else class="h-4 w-4" :class="scanProgress >= 60 ? 'animate-spin' : ''" />
                 <span>Web Vulnerabilities Detection</span>
               </div>
             </div>
 
-            <Alert class="bg-blue-50 border-blue-200">
-              <AlertDescription class="text-sm text-blue-800">
+            <Alert class="bg-blue-50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-900/30">
+              <AlertDescription class="text-sm text-blue-800 dark:text-blue-400">
                 Proses pemindaian dapat memakan waktu beberapa menit. Harap menunggu...
               </AlertDescription>
             </Alert>
@@ -491,15 +502,15 @@ const isActive = (path) => route.path === path
           </CardContent>
         </Card>
 
-        <Card class="border border-blue-200 bg-blue-50" v-if="!isScanning">
+        <Card class="border border-blue-200 dark:border-blue-900/30 bg-blue-50 dark:bg-blue-900/10" v-if="!isScanning">
           <CardContent class="pt-6">
             <div class="flex items-start gap-3">
-              <div class="h-10 w-10 rounded-lg bg-blue-200 flex items-center justify-center shrink-0">
-                <Shield class="h-5 w-5 text-blue-700" />
+              <div class="h-10 w-10 rounded-lg bg-blue-200 dark:bg-blue-900/50 flex items-center justify-center shrink-0">
+                <Shield class="h-5 w-5 text-blue-700 dark:text-blue-400" />
               </div>
               <div>
-                <h3 class="font-semibold text-blue-900 mb-1">Apa yang akan dipindai?</h3>
-                <ul class="text-xs text-blue-700 space-y-1">
+                <h3 class="font-semibold text-blue-900 dark:text-blue-300 mb-1">Apa yang akan dipindai?</h3>
+                <ul class="text-xs text-blue-700 dark:text-blue-500 space-y-1">
                   <li>Kerentanan keamanan umum (OWASP Top 10)</li>
                   <li>Konfigurasi HTTP Security Headers</li>
                   <li>Proteksi & Autentikasi</li>
@@ -517,22 +528,22 @@ const isActive = (path) => route.path === path
 
     <!-- Cancel Confirmation Dialog -->
     <Dialog :open="showCancelDialog" @update:open="showCancelDialog = $event">
-      <DialogContent class="sm:max-w-md">
+      <DialogContent class="sm:max-w-md dark:bg-slate-900 dark:border-slate-800">
         <DialogHeader>
           <div class="flex items-center gap-3 mb-2">
-            <div class="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
-              <AlertTriangle class="h-6 w-6 text-red-600" />
+            <div class="h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <AlertTriangle class="h-6 w-6 text-red-600 dark:text-red-400" />
             </div>
             <div>
-              <DialogTitle class="text-lg font-bold text-neutral-900">Batalkan Pemindaian?</DialogTitle>
-              <DialogDescription class="text-sm text-neutral-500 mt-1">
+              <DialogTitle class="text-lg font-bold text-neutral-900 dark:text-white">Batalkan Pemindaian?</DialogTitle>
+              <DialogDescription class="text-sm text-neutral-500 dark:text-slate-400 mt-1">
                 Tindakan ini tidak dapat dibatalkan
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
-        <div class="bg-red-50 border border-red-200 rounded-lg p-4 my-2">
-          <p class="text-sm text-red-800">
+        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg p-4 my-2">
+          <p class="text-sm text-red-800 dark:text-red-400">
             Pemindaian yang sedang berjalan akan dihentikan secara paksa.
             Hasil yang sudah terdeteksi <strong>tidak akan disimpan</strong> dan Anda
             harus memulai ulang dari awal.
@@ -541,6 +552,7 @@ const isActive = (path) => route.path === path
         <DialogFooter class="flex gap-3 sm:justify-end mt-4">
           <Button
             variant="outline"
+            class="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             @click="showCancelDialog = false"
             :disabled="isCancelling"
           >

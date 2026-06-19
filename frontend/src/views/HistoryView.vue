@@ -20,13 +20,17 @@ import { Separator } from '@/components/ui/separator'
 import { 
   History, Search, Filter, ChevronLeft, ChevronRight,
   CircleUser, Menu, Package2, Home, Scan as ScanIcon,
-  Shield, AlertTriangle, Clock, ExternalLink, Download, FileText, LogOut
+  Shield, AlertTriangle, Clock, ExternalLink, Download, FileText, LogOut, Sun, Moon
 } from 'lucide-vue-next'
+
+import { useDarkMode } from '@/composables/useDarkMode'
+const { isDark, toggleDark } = useDarkMode()
 
 
 const router = useRouter()
 const route = useRoute()
 const username = ref('Pengguna')
+const userEmail = ref('user@deepscan.local')
 
 // Data state
 const allScans = ref([])
@@ -45,6 +49,7 @@ if (storedUser) {
   try {
     const user = JSON.parse(storedUser)
     username.value = user.username || 'Pengguna'
+    userEmail.value = user.email || 'user@deepscan.local'
   } catch (e) {
     console.error('Error parsing user data:', e)
   }
@@ -226,10 +231,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex min-h-screen w-full flex-col bg-neutral-50/50">
+  <div class="flex min-h-screen w-full flex-col bg-neutral-50/50 dark:bg-slate-950 transition-colors duration-300">
 
     <!-- NAVBAR - Sama dengan sebelumnya -->
-    <header class="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+    <header class="sticky top-0 z-50 flex h-16 items-center gap-4 border-b border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 md:px-6">
       
       <nav class="hidden flex-col gap-6 text-lg font-medium md:flex md:flex-row md:items-center md:gap-5 md:text-sm lg:gap-6">
         <a href="#" class="flex items-center gap-2 text-lg font-semibold md:text-base">
@@ -271,52 +276,52 @@ onMounted(() => {
         </SheetTrigger>
         <SheetContent side="left" class="p-0 gap-0">
           <div class="flex flex-col h-full">
-            <div class="px-6 py-5 bg-white border-b border-neutral-100">
+            <div class="px-6 py-5 bg-white dark:bg-slate-900 border-b border-neutral-100 dark:border-slate-800">
               <div class="flex items-center gap-3">
-                <div class="h-11 w-11 rounded-2xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
-                  <Package2 class="h-5 w-5 text-blue-600" />
+                <div class="h-11 w-11 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center ring-1 ring-blue-100 dark:ring-blue-800">
+                  <Package2 class="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <h2 class="text-neutral-900 font-bold text-lg leading-tight">Deep Scan</h2>
-                  <p class="text-neutral-500 text-xs">Security Scanner</p>
+                  <h2 class="text-neutral-900 dark:text-white font-bold text-lg leading-tight">Deep Scan</h2>
+                  <p class="text-neutral-500 dark:text-slate-400 text-xs">Security Scanner</p>
                 </div>
               </div>
             </div>
             <nav class="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
               <p class="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest px-3 mb-3">Menu</p>
-              <a @click="goToDashboard" href="#" :class="[isActive('/dashboard') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
-                <div :class="[isActive('/dashboard') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
-                  <Home :class="[isActive('/dashboard') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+              <a @click="goToDashboard" href="#" :class="[isActive('/dashboard') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-semibold shadow-sm' : 'text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-800', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/dashboard') ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-neutral-100 dark:bg-slate-800', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <Home :class="[isActive('/dashboard') ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-500 dark:text-slate-400', 'h-4 w-4']" />
                 </div>
                 Dashboard
               </a>
-              <a @click="goToScan" href="#" :class="[isActive('/scan') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
-                <div :class="[isActive('/scan') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
-                  <ScanIcon :class="[isActive('/scan') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+              <a @click="goToScan" href="#" :class="[isActive('/scan') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-semibold shadow-sm' : 'text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-800', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/scan') ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-neutral-100 dark:bg-slate-800', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <ScanIcon :class="[isActive('/scan') ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-500 dark:text-slate-400', 'h-4 w-4']" />
                 </div>
                 Scan
               </a>
-              <a @click="goToHistory" href="#" :class="[isActive('/history') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
-                <div :class="[isActive('/history') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
-                  <History :class="[isActive('/history') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+              <a @click="goToHistory" href="#" :class="[isActive('/history') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-semibold shadow-sm' : 'text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-800', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/history') ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-neutral-100 dark:bg-slate-800', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <History :class="[isActive('/history') ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-500 dark:text-slate-400', 'h-4 w-4']" />
                 </div>
                 Riwayat
               </a>
             </nav>
             <div class="px-4 pb-5">
-              <Separator class="mb-4" />
-              <div class="flex items-center gap-3 p-3 rounded-2xl bg-neutral-50 border border-neutral-100 mb-3">
+              <Separator class="mb-4 bg-neutral-200 dark:bg-slate-800" />
+              <div class="flex items-center gap-3 p-3 rounded-2xl bg-neutral-50 dark:bg-slate-800/50 border border-neutral-100 dark:border-slate-700 mb-3">
                 <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-md">
                   <span class="text-white font-bold text-sm">{{ username.charAt(0).toUpperCase() }}</span>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="font-semibold text-sm text-neutral-900 truncate">{{ username }}</p>
-                  <p class="text-xs text-neutral-500">Deep-Scan User</p>
+                  <p class="font-semibold text-sm text-neutral-900 dark:text-white truncate">{{ username }}</p>
+                  <p class="text-xs text-neutral-500 dark:text-slate-400 truncate">{{ userEmail }}</p>
                 </div>
               </div>
-              <button @click="handleLogout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 hover:bg-red-50 transition-all duration-200 text-sm font-medium">
-                <div class="h-8 w-8 rounded-lg bg-red-50 flex items-center justify-center">
-                  <LogOut class="h-4 w-4 text-red-500" />
+              <button @click="handleLogout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200 text-sm font-medium">
+                <div class="h-8 w-8 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
+                  <LogOut class="h-4 w-4 text-red-500 dark:text-red-400" />
                 </div>
                 Logout
               </button>
@@ -328,19 +333,24 @@ onMounted(() => {
 
 
       <div class="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
-        <div class="ml-auto"></div>
+        <div class="ml-auto flex items-center gap-2">
+          <button @click="toggleDark" class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" :title="isDark ? 'Light mode' : 'Dark mode'">
+            <Sun v-if="isDark" class="h-4 w-4 text-amber-500" />
+            <Moon v-else class="h-4 w-4 text-slate-500" />
+          </button>
+        </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger as-child>
-            <Button variant="secondary" size="icon" class="rounded-full">
-              <CircleUser class="h-5 w-5" />
+            <Button variant="secondary" class="rounded-full h-10 w-10 p-0 overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 border-0 hover:opacity-90">
+              <span class="text-white font-bold">{{ username.charAt(0).toUpperCase() }}</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-56">
-            <DropdownMenuLabel>
-              <div class="flex flex-col space-y-1">
-                <p class="text-sm font-medium">{{ username }}</p>
-                <p class="text-xs text-muted-foreground">Deep-Scan User</p>
+          <DropdownMenuContent align="end" class="w-64 dark:bg-slate-900 dark:border-slate-800">
+            <DropdownMenuLabel class="p-4">
+              <div class="flex flex-col space-y-1.5">
+                <p class="text-sm font-semibold text-neutral-900 dark:text-white leading-none">{{ username }}</p>
+                <p class="text-xs text-neutral-500 dark:text-slate-400 leading-none">{{ userEmail }}</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -360,40 +370,40 @@ onMounted(() => {
         <!-- Header -->
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
-            <div class="h-12 w-12 rounded-xl bg-purple-100 flex items-center justify-center">
-              <History class="h-6 w-6 text-purple-600" />
+            <div class="h-12 w-12 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center border border-purple-200 dark:border-purple-800">
+              <History class="h-6 w-6 text-purple-600 dark:text-purple-400" />
             </div>
             <div>
-              <h1 class="text-2xl font-bold text-neutral-900">Riwayat Pemindaian</h1>
-              <p class="text-sm text-neutral-600">Lihat semua hasil pemindaian yang pernah dilakukan</p>
+              <h1 class="text-2xl font-bold text-neutral-900 dark:text-white">Riwayat Pemindaian</h1>
+              <p class="text-sm text-neutral-600 dark:text-slate-400">Lihat semua hasil pemindaian yang pernah dilakukan</p>
             </div>
           </div>
         </div>
 
         <!-- Filters -->
-        <Card class="border-none shadow-lg">
+        <Card class="border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <CardContent class="pt-6">
             <div class="flex flex-col md:flex-row gap-4">
               
               <!-- Search -->
               <div class="flex-1 relative">
-                <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400 dark:text-slate-500" />
                 <Input
                   v-model="searchQuery"
                   @input="handleFilterChange"
                   type="text"
                   placeholder="Cari berdasarkan URL..."
-                  class="pl-9 focus-visible:ring-blue-600"
+                  class="pl-9 focus-visible:ring-blue-600 bg-neutral-50 dark:bg-slate-800 border-neutral-200 dark:border-slate-700 dark:text-white"
                 />
               </div>
 
               <!-- Status Filter -->
               <Select v-model="statusFilter" @update:modelValue="handleFilterChange">
-                <SelectTrigger class="w-full md:w-48">
+                <SelectTrigger class="w-full md:w-48 dark:bg-slate-800 dark:border-slate-700 dark:text-white">
                   <Filter class="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Semua Status" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent class="dark:bg-slate-800 dark:border-slate-700">
                   <SelectItem value="all">Semua Status</SelectItem>
                   <SelectItem value="vulnerable">Rentan</SelectItem>
                   <SelectItem value="secure">Aman</SelectItem>
@@ -403,46 +413,46 @@ onMounted(() => {
             </div>
 
             <!-- Result count -->
-            <div class="mt-3 text-sm text-neutral-600">
+            <div class="mt-3 text-sm text-neutral-600 dark:text-slate-400">
               Menampilkan {{ paginatedScans.length }} dari {{ filteredScans.length }} hasil
             </div>
           </CardContent>
         </Card>
 
         <!-- Data Display -->
-        <Card class="border-none shadow-lg">
+        <Card class="border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <CardContent class="p-0">
             
             <!-- Loading State -->
             <div v-if="isLoading" class="p-6 space-y-3">
-              <Skeleton v-for="i in 5" :key="i" class="h-16 w-full" />
+              <Skeleton v-for="i in 5" :key="i" class="h-16 w-full bg-neutral-100 dark:bg-slate-800" />
             </div>
 
             <!-- Empty State -->
             <div v-else-if="filteredScans.length === 0" class="text-center py-12 px-4">
-              <History class="h-16 w-16 mx-auto mb-4 text-neutral-300" />
-              <h3 class="font-semibold text-lg text-neutral-900 mb-2">
+              <History class="h-16 w-16 mx-auto mb-4 text-neutral-300 dark:text-slate-600" />
+              <h3 class="font-semibold text-lg text-neutral-900 dark:text-white mb-2">
                 {{ searchQuery || statusFilter !== 'all' ? 'Tidak ada hasil' : 'Belum ada riwayat' }}
               </h3>
-              <p class="text-sm text-neutral-600 mb-4">
+              <p class="text-sm text-neutral-600 dark:text-slate-400 mb-4">
                 {{ searchQuery || statusFilter !== 'all' ? 'Coba ubah filter pencarian' : 'Mulai scan pertama Anda' }}
               </p>
-              <Button @click="goToScan" class="bg-blue-600 hover:bg-blue-700">
+              <Button @click="goToScan" class="bg-blue-600 hover:bg-blue-700 dark:bg-blue-600">
                 Mulai Scan Baru
               </Button>
             </div>
 
             <!-- Mobile Card List (visible only on small screens) -->
-            <div v-else class="md:hidden divide-y divide-neutral-100">
+            <div v-else class="md:hidden divide-y divide-neutral-100 dark:divide-slate-800">
               <div
                 v-for="(scan, index) in paginatedScans"
                 :key="'m-' + scan.scan_id"
-                class="p-4 space-y-3 hover:bg-neutral-50 transition-colors"
+                class="p-4 space-y-3 hover:bg-neutral-50 dark:hover:bg-slate-800/50 transition-colors"
               >
                 <div class="flex items-start justify-between gap-3">
                   <div class="flex items-center gap-2 min-w-0 flex-1">
-                    <ExternalLink class="h-4 w-4 text-neutral-400 shrink-0 mt-0.5" />
-                    <span class="font-medium text-neutral-900 text-sm break-all line-clamp-2">
+                    <ExternalLink class="h-4 w-4 text-neutral-400 dark:text-slate-500 shrink-0 mt-0.5" />
+                    <span class="font-medium text-neutral-900 dark:text-white text-sm break-all line-clamp-2">
                       {{ scan.target }}
                     </span>
                   </div>
@@ -455,16 +465,16 @@ onMounted(() => {
                   <Badge v-if="scan.status === 'completed'" variant="secondary" :class="getStatusBadge(scan.vuln_count).class + ' text-xs'">
                     {{ getStatusBadge(scan.vuln_count).text }}
                   </Badge>
-                  <div class="flex items-center gap-1 text-xs text-neutral-500">
+                  <div class="flex items-center gap-1 text-xs text-neutral-500 dark:text-slate-400">
                     <component 
                       :is="getStatusIcon(scan.vuln_count)" 
                       class="h-3.5 w-3.5"
-                      :class="scan.vuln_count === 0 ? 'text-green-600' : 'text-red-600'"
+                      :class="scan.vuln_count === 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                     />
                     <span class="font-semibold">{{ scan.vuln_count }}</span>
                     <span>kerentanan</span>
                   </div>
-                  <div class="flex items-center gap-1 text-xs text-neutral-500 ml-auto">
+                  <div class="flex items-center gap-1 text-xs text-neutral-500 dark:text-slate-400 ml-auto">
                     <Clock class="h-3.5 w-3.5" />
                     {{ scan.date }}
                   </div>
@@ -475,7 +485,7 @@ onMounted(() => {
                     variant="outline" 
                     size="sm"
                     @click="goToDetail(scan.scan_id)"
-                    class="flex-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-xs h-8"
+                    class="flex-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-xs h-8 dark:border-slate-700"
                   >
                     <FileText class="h-3.5 w-3.5 mr-1" />
                     Detail
@@ -485,7 +495,7 @@ onMounted(() => {
                     size="sm"
                     @click="downloadReport(scan.scan_id)"
                     :disabled="downloadingId === scan.scan_id"
-                    class="flex-1 text-green-600 hover:text-green-700 hover:bg-green-50 text-xs h-8"
+                    class="flex-1 text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 text-xs h-8 dark:border-slate-700"
                   >
                     <Download class="h-3.5 w-3.5 mr-1" />
                     {{ downloadingId === scan.scan_id ? 'Processing...' : 'Laporan' }}
@@ -497,21 +507,21 @@ onMounted(() => {
             <!-- Desktop Table (hidden on small screens) -->
             <Table v-if="filteredScans.length > 0" class="hidden md:table">
               <TableHeader>
-                <TableRow class="bg-neutral-50">
-                  <TableHead class="w-12 text-center">#</TableHead>
-                  <TableHead>Target URL</TableHead>
-                  <TableHead class="text-center">Status Scan</TableHead>
-                  <TableHead class="text-center">Kondisi</TableHead>
-                  <TableHead class="text-center">Kerentanan</TableHead>
-                  <TableHead class="text-center">Tanggal</TableHead>
-                  <TableHead class="text-center">Aksi</TableHead>
+                <TableRow class="bg-neutral-50 dark:bg-slate-800/50 hover:bg-neutral-50">
+                  <TableHead class="w-12 text-center text-neutral-500">#</TableHead>
+                  <TableHead class="text-neutral-500">Target URL</TableHead>
+                  <TableHead class="text-center text-neutral-500">Status Scan</TableHead>
+                  <TableHead class="text-center text-neutral-500">Kondisi</TableHead>
+                  <TableHead class="text-center text-neutral-500">Kerentanan</TableHead>
+                  <TableHead class="text-center text-neutral-500">Tanggal</TableHead>
+                  <TableHead class="text-center text-neutral-500">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <TableRow 
                   v-for="(scan, index) in paginatedScans" 
                   :key="scan.scan_id"
-                  class="hover:bg-neutral-50"
+                  class="hover:bg-neutral-50 dark:hover:bg-slate-800/50 border-neutral-100 dark:border-slate-800"
                 >
                   <TableCell class="font-medium text-neutral-500 text-center">
                     {{ (currentPage - 1) * itemsPerPage + index + 1 }}
@@ -519,7 +529,7 @@ onMounted(() => {
                   <TableCell>
                     <div class="flex items-center gap-2">
                       <ExternalLink class="h-4 w-4 text-neutral-400 shrink-0" />
-                      <span class="font-medium text-neutral-900 truncate max-w-md">
+                      <span class="font-medium text-neutral-900 dark:text-white truncate max-w-md">
                         {{ scan.target }}
                       </span>
                     </div>
@@ -533,21 +543,21 @@ onMounted(() => {
                     <Badge v-if="scan.status === 'completed'" variant="secondary" :class="getStatusBadge(scan.vuln_count).class">
                       {{ getStatusBadge(scan.vuln_count).text }}
                     </Badge>
-                    <span v-else class="text-neutral-400 text-sm">-</span>
+                    <span v-else class="text-neutral-400 dark:text-slate-600 text-sm">-</span>
                   </TableCell>
                   <TableCell>
                     <div class="flex items-center justify-center gap-2">
                       <component 
                         :is="getStatusIcon(scan.vuln_count)" 
                         class="h-4 w-4"
-                        :class="scan.vuln_count === 0 ? 'text-green-600' : 'text-red-600'"
+                        :class="scan.vuln_count === 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
                       />
-                      <span class="font-semibold">{{ scan.vuln_count }}</span>
-                      <span class="text-neutral-500 text-sm">kerentanan</span>
+                      <span class="font-semibold text-neutral-900 dark:text-white">{{ scan.vuln_count }}</span>
+                      <span class="text-neutral-500 dark:text-slate-400 text-sm">kerentanan</span>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div class="flex items-center justify-center gap-2 text-sm text-neutral-600">
+                    <div class="flex items-center justify-center gap-2 text-sm text-neutral-600 dark:text-slate-400">
                       <Clock class="h-4 w-4" />
                       {{ scan.date }}
                     </div>
@@ -558,7 +568,7 @@ onMounted(() => {
                         variant="ghost" 
                         size="sm"
                         @click="goToDetail(scan.scan_id)"
-                        class="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        class="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                       >
                         <FileText class="h-4 w-4 mr-1" />
                         Detail
@@ -568,7 +578,7 @@ onMounted(() => {
                           size="sm"
                           @click="downloadReport(scan.scan_id)"
                           :disabled="downloadingId === scan.scan_id"
-                          class="text-green-600 hover:text-green-700 hover:bg-green-50"
+                          class="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20"
                         >
                           <Download class="h-4 w-4 mr-1" />
                           {{ downloadingId === scan.scan_id ? 'Processing...' : 'Laporan' }}
@@ -584,11 +594,11 @@ onMounted(() => {
 
 
         <!-- Pagination -->
-        <Card v-if="!isLoading && filteredScans.length > itemsPerPage" class="border-none shadow-lg">
+        <Card v-if="!isLoading && filteredScans.length > itemsPerPage" class="border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <CardContent class="py-4">
             <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
               
-              <div class="text-sm text-neutral-600">
+              <div class="text-sm text-neutral-600 dark:text-slate-400">
                 Halaman {{ currentPage }} dari {{ totalPages }}
               </div>
 

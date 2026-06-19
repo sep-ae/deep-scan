@@ -5,9 +5,11 @@ import { toast } from 'vue-sonner'
 import api from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { useDarkMode } from '@/composables/useDarkMode'
+import { Sun, Moon, Shield } from 'lucide-vue-next'
 
+const { isDark, toggleDark } = useDarkMode()
 const router = useRouter()
 const identifier = ref('') 
 const password = ref('')
@@ -99,6 +101,19 @@ const handleGoogleCallback = async (response) => {
   }
 }
 
+const renderGoogleBtn = () => {
+  if (googleBtnRef.value && window.google?.accounts?.id) {
+    window.google.accounts.id.renderButton(googleBtnRef.value, {
+      theme: isDark.value ? 'filled_black' : 'outline',
+      size: 'large',
+      width: '100%',
+      text: 'signin_with',
+      shape: 'rectangular',
+      logo_alignment: 'left'
+    })
+  }
+}
+
 onMounted(() => {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
   if (!clientId) {
@@ -106,7 +121,6 @@ onMounted(() => {
     return
   }
 
-  // Tunggu Google GIS script loaded
   const initGoogle = () => {
     if (window.google?.accounts?.id) {
       window.google.accounts.id.initialize({
@@ -115,19 +129,8 @@ onMounted(() => {
         auto_select: false,
         cancel_on_tap_outside: true
       })
-
-      if (googleBtnRef.value) {
-        window.google.accounts.id.renderButton(googleBtnRef.value, {
-          theme: 'outline',
-          size: 'large',
-          width: '100%',
-          text: 'signin_with',
-          shape: 'rectangular',
-          logo_alignment: 'left'
-        })
-      }
+      renderGoogleBtn()
     } else {
-      // Retry kalau script belum loaded
       setTimeout(initGoogle, 200)
     }
   }
@@ -137,85 +140,104 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col items-center justify-center py-10">
+  <div class="min-h-screen flex items-center justify-center px-4 py-8 bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 transition-colors duration-300">
 
-    <div class="flex flex-col items-center mb-8">
-      <h1 class="text-3xl font-bold text-neutral-800">Deep-Scan</h1>
-      <p class="text-neutral-500 mt-1 text-sm">Keamanan Web Secara Cerdas & Otomatis</p>
-    </div>
+    <!-- Dark mode toggle -->
+    <button
+      @click="toggleDark"
+      class="fixed top-4 right-4 z-50 p-2 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-200"
+      :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+    >
+      <Sun v-if="isDark" class="h-4 w-4 text-amber-500" />
+      <Moon v-else class="h-4 w-4 text-slate-600" />
+    </button>
 
-    <Card class="w-full max-w-md border-none shadow-lg rounded-2xl">
-      <CardHeader class="space-y-1 text-center">
-        <CardTitle class="text-xl font-bold">Selamat Datang</CardTitle>
-        <CardDescription>Masuk untuk mulai mengelola sistem Anda</CardDescription>
-      </CardHeader>
+    <div class="w-full max-w-sm">
 
-      <CardContent>
+      <!-- Logo -->
+      <div class="flex items-center justify-center gap-2.5 mb-8">
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+          <Shield class="h-5 w-5 text-white" />
+        </div>
+        <span class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Deep-Scan</span>
+      </div>
+
+      <!-- Card -->
+      <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-black/20 border border-slate-100 dark:border-slate-800 p-6 sm:p-8 space-y-6">
+
+        <div class="text-center space-y-1">
+          <h1 class="text-xl font-bold text-slate-900 dark:text-white">Selamat Datang</h1>
+          <p class="text-sm text-slate-500 dark:text-slate-400">Masuk ke dashboard keamanan Anda</p>
+        </div>
+
         <form @submit.prevent="handleLogin" class="space-y-4">
-          <div class="space-y-2">
-            <Label for="identifier">Username atau Email</Label>
+          <div class="space-y-1.5">
+            <Label for="identifier" class="text-xs font-medium text-slate-600 dark:text-slate-300">Username atau Email</Label>
             <Input
               id="identifier"
               type="text"
-              placeholder="admin atau admin@email.com"
+              placeholder="username atau email"
               v-model="identifier"
               :disabled="isLoading || isGoogleLoading"
               required
-              class="focus-visible:ring-blue-600"
+              class="h-10 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus-visible:ring-blue-500 dark:focus-visible:ring-blue-400 text-sm dark:text-white dark:placeholder-slate-500"
             />
           </div>
 
-          <div class="space-y-2">
-            <Label for="password">Password</Label>
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <Label for="password" class="text-xs font-medium text-slate-600 dark:text-slate-300">Password</Label>
+              <a href="#" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">Lupa password?</a>
+            </div>
             <Input
               id="password"
               type="password"
-              placeholder="Masukkan password Anda"
+              placeholder="••••••••"
               v-model="password"
               :disabled="isLoading || isGoogleLoading"
               required
-              class="focus-visible:ring-blue-600"
+              class="h-10 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus-visible:ring-blue-500 dark:focus-visible:ring-blue-400 text-sm dark:text-white dark:placeholder-slate-500"
             />
           </div>
 
           <Button
             type="submit"
-            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md"
+            class="w-full h-10 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium text-sm rounded-lg shadow-sm transition-all duration-200"
             :disabled="isLoading || isGoogleLoading"
           >
             <span v-if="isLoading">Memproses...</span>
-            <span v-else>Masuk ke Dashboard</span>
+            <span v-else>Masuk</span>
           </Button>
-
-          <!-- Divider -->
-          <div class="relative my-4">
-            <div class="absolute inset-0 flex items-center">
-              <span class="w-full border-t border-neutral-200"></span>
-            </div>
-            <div class="relative flex justify-center text-xs uppercase">
-              <span class="bg-white px-2 text-neutral-500">atau</span>
-            </div>
-          </div>
-
-          <!-- Google Sign-In Button -->
-          <div class="flex justify-center">
-            <div ref="googleBtnRef" id="google-signin-btn"></div>
-          </div>
-
-          <p v-if="isGoogleLoading" class="text-center text-sm text-blue-600">
-            Memproses login Google...
-          </p>
-
-          <p class="text-center text-sm text-neutral-500">
-            Belum punya akun?
-            <router-link to="/register" class="font-medium text-blue-600 hover:underline">
-              Daftar sekarang
-            </router-link>
-          </p>
         </form>
-      </CardContent>
-    </Card>
 
-    <p class="text-neutral-400 text-xs mt-6">© 2026 Deep-Scan, Tugas Akhir</p>
+        <!-- Divider -->
+        <div class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-slate-200 dark:border-slate-700"></div>
+          </div>
+          <div class="relative flex justify-center">
+            <span class="bg-white dark:bg-slate-900 px-3 text-xs text-slate-400 dark:text-slate-500 uppercase">atau</span>
+          </div>
+        </div>
+
+        <!-- Google Sign-In -->
+        <div class="flex justify-center">
+          <div ref="googleBtnRef" id="google-signin-btn"></div>
+        </div>
+
+        <p v-if="isGoogleLoading" class="text-center text-xs text-blue-600 dark:text-blue-400">
+          Memproses login Google...
+        </p>
+
+        <p class="text-center text-sm text-slate-500 dark:text-slate-400">
+          Belum punya akun?
+          <router-link to="/register" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+            Daftar
+          </router-link>
+        </p>
+      </div>
+
+      <p class="text-center text-xs text-slate-400 dark:text-slate-600 mt-6">© 2026 Deep-Scan · Tugas Akhir</p>
+    </div>
   </div>
 </template>

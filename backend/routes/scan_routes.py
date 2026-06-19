@@ -4,8 +4,12 @@ from models import Scan, ScanResult, Vulnerability
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from sqlalchemy import desc
+from urllib.parse import urlparse
 import validators
+import ipaddress
+import socket
 import pytz
+import logging
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -15,7 +19,9 @@ from io import BytesIO
 import threading
 from core.scanner_engine import ScannerEngine
 from core.report_generator import generate_pdf_report
-from extensions import limiter 
+from extensions import limiter
+
+logger = logging.getLogger(__name__)
 
 scan_bp = Blueprint('scan', __name__, url_prefix='/api/scan')
 
@@ -27,10 +33,45 @@ def handle_preflight():
         return '', 200
 
 
+# Jaringan IP internal yang diblokir untuk mencegah SSRF
+BLOCKED_NETWORKS = [
+    ipaddress.ip_network('127.0.0.0/8'),       # Loopback
+    ipaddress.ip_network('10.0.0.0/8'),        # Private Class A
+    ipaddress.ip_network('172.16.0.0/12'),     # Private Class B
+    ipaddress.ip_network('192.168.0.0/16'),    # Private Class C
+    ipaddress.ip_network('169.254.0.0/16'),    # Link-local / AWS metadata
+    ipaddress.ip_network('0.0.0.0/8'),         # Non-routable
+    ipaddress.ip_network('100.64.0.0/10'),     # Shared address space
+    ipaddress.ip_network('::1/128'),           # IPv6 loopback
+    ipaddress.ip_network('fc00::/7'),          # IPv6 private
+]
+
+BLOCKED_HOSTNAMES = {'localhost', 'metadata.google.internal', 'instance-data'}
+
+
 def is_valid_url(url):
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     return validators.url(url), url
+
+
+def is_internal_target(url):
+    """Cek apakah URL mengarah ke IP internal / localhost (SSRF protection)."""
+    try:
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return True
+
+        # Cek hostname yang diblokir
+        if hostname.lower() in BLOCKED_HOSTNAMES:
+            return True
+
+        # Resolve hostname ke IP dan cek apakah internal
+        resolved_ip = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(resolved_ip)
+        return any(ip in net for net in BLOCKED_NETWORKS)
+    except (socket.gaierror, ValueError):
+        return False
 
 
 def get_local_time():
@@ -40,6 +81,7 @@ def get_local_time():
 
 @scan_bp.route('/start', methods=['POST'])
 @jwt_required()
+@limiter.limit("5 per hour")
 def start_scan():
     """
     Mulai Scan Baru
@@ -97,6 +139,11 @@ def start_scan():
     if not is_valid:
         return jsonify({"msg": "Format URL tidak valid"}), 400
 
+    # SSRF Protection: Blokir scan ke IP internal / localhost
+    if is_internal_target(normalized_url):
+        logger.warning(f"[SSRF BLOCKED] user_id={user_id} tried to scan internal target: {normalized_url}")
+        return jsonify({"msg": "Tidak diizinkan memindai alamat internal atau localhost"}), 403
+
     # Cek apakah user masih punya scan yang berjalan (Batasan 1 active scan per user)
     active_scan = Scan.query.filter(
         Scan.users_user_id == int(user_id),
@@ -146,7 +193,8 @@ def start_scan():
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({"msg": "Gagal memulai scan", "error": str(e)}), 500
+        logger.error(f"[SCAN START ERROR] user_id={user_id} | {e}")
+        return jsonify({"msg": "Gagal memulai scan"}), 500
 
 
 @scan_bp.route('/active', methods=['GET'])

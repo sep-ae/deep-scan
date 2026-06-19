@@ -2,6 +2,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { useDarkMode } from '@/composables/useDarkMode'
 
 import { 
   Shield, Zap, Target, CheckCircle2, 
@@ -9,28 +10,38 @@ import {
   Globe, Search, FileText, AlertTriangle,
   Database, Wifi, Server, Code2, Upload,
   FolderOpen, ExternalLink, KeyRound,
-  ShieldAlert, BarChart3, Cpu
+  ShieldAlert, BarChart3, Cpu, Sun, Moon
 } from 'lucide-vue-next'
+
+const { isDark, toggleDark } = useDarkMode()
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+  <div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 transition-colors duration-300">
     
     <!-- Navbar -->
-    <header class="border-b bg-white/80 backdrop-blur-md sticky top-0 z-50">
+    <header class="border-b bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-50 dark:border-slate-800">
       <div class="container mx-auto px-4 py-4 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <div class="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
             <Shield class="h-6 w-6 text-white" />
           </div>
-          <span class="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          <span class="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
             Deep-Scan
           </span>
         </div>
 
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <button
+            @click="toggleDark"
+            class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            :title="isDark ? 'Light mode' : 'Dark mode'"
+          >
+            <Sun v-if="isDark" class="h-4 w-4 text-amber-500" />
+            <Moon v-else class="h-4 w-4 text-slate-500" />
+          </button>
           <router-link to="/login">
-            <Button variant="ghost" class="text-neutral-700 hover:text-blue-600">
+            <Button variant="ghost" class="text-neutral-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400">
               Login
             </Button>
           </router-link>
@@ -44,55 +55,55 @@ import {
     </header>
 
     <!-- Hero Section -->
-    <section class="container mx-auto px-4 py-16 md:py-24">
-      <div class="max-w-4xl mx-auto text-center space-y-8">
+    <section class="container mx-auto px-4 py-12 md:py-20">
+      <div class="max-w-4xl mx-auto text-center space-y-6">
         
         <Badge variant="secondary" class="bg-blue-100 text-blue-700 border-blue-200 px-4 py-1">
           <Zap class="h-3 w-3 mr-1" />
           Automated Vulnerability Scanner
         </Badge>
 
-        <h1 class="text-4xl md:text-6xl font-bold text-neutral-900 leading-tight">
+        <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-neutral-900 dark:text-white leading-tight">
           Platform Deteksi Kerentanan
-          <span class="block mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          <span class="block mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">
             Website Otomatis
           </span>
         </h1>
 
-        <p class="text-lg md:text-xl text-neutral-600 max-w-2xl mx-auto">
+        <p class="text-base md:text-lg text-neutral-600 dark:text-slate-400 max-w-2xl mx-auto">
           Deep-Scan memindai website Anda secara otomatis menggunakan 
           <strong>59 profil kerentanan</strong> berdasarkan standar 
           <strong>OWASP Top 10</strong> dan penilaian <strong>CVSS v3.1</strong>.
         </p>
 
-        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
+        <div class="flex flex-col sm:flex-row gap-3 justify-center items-center pt-4">
           <router-link to="/register">
-            <Button class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all">
+            <Button class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 text-sm shadow-md hover:shadow-lg transition-all">
               Mulai Scan Gratis
-              <ArrowRight class="h-5 w-5 ml-2" />
+              <ArrowRight class="h-4 w-4 ml-2" />
             </Button>
           </router-link>
 
           <router-link to="/login">
-            <Button variant="outline" class="border-blue-200 text-blue-700 hover:bg-blue-50 px-8 py-6 text-lg">
+            <Button variant="outline" class="border-blue-200 text-blue-700 hover:bg-blue-50 px-5 py-3 text-sm">
               Sudah Punya Akun
             </Button>
           </router-link>
         </div>
 
         <!-- Stats -->
-        <div class="grid grid-cols-3 gap-4 max-w-2xl mx-auto pt-8">
-          <div class="text-center p-4 rounded-xl bg-white/70 border border-blue-100">
-            <div class="text-3xl font-bold text-blue-600">59</div>
-            <div class="text-sm text-neutral-600">Profil Kerentanan</div>
+        <div class="grid grid-cols-3 gap-2 sm:gap-4 max-w-2xl mx-auto pt-6">
+          <div class="text-center p-2 sm:p-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-blue-100 dark:border-slate-700 flex flex-col justify-center">
+            <div class="text-xl sm:text-3xl font-bold text-blue-600 dark:text-blue-400">59</div>
+            <div class="text-[10px] sm:text-sm text-neutral-600 dark:text-slate-400 leading-tight mt-1">Profil Kerentanan</div>
           </div>
-          <div class="text-center p-4 rounded-xl bg-white/70 border border-blue-100">
-            <div class="text-3xl font-bold text-blue-600">4</div>
-            <div class="text-sm text-neutral-600">Fase Pemindaian</div>
+          <div class="text-center p-2 sm:p-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-blue-100 dark:border-slate-700 flex flex-col justify-center">
+            <div class="text-xl sm:text-3xl font-bold text-blue-600 dark:text-blue-400">4</div>
+            <div class="text-[10px] sm:text-sm text-neutral-600 dark:text-slate-400 leading-tight mt-1">Fase Pemindaian</div>
           </div>
-          <div class="text-center p-4 rounded-xl bg-white/70 border border-blue-100">
-            <div class="text-3xl font-bold text-blue-600">CVSS 3.1</div>
-            <div class="text-sm text-neutral-600">Standar Scoring</div>
+          <div class="text-center p-2 sm:p-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-blue-100 dark:border-slate-700 flex flex-col justify-center">
+            <div class="text-xl sm:text-3xl font-bold text-blue-600 dark:text-blue-400">CVSS</div>
+            <div class="text-[10px] sm:text-sm text-neutral-600 dark:text-slate-400 leading-tight mt-1">Standar Scoring</div>
           </div>
         </div>
 
@@ -108,10 +119,10 @@ import {
             <Search class="h-3 w-3 mr-1" />
             Modul Pemindaian
           </Badge>
-          <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-3">
+          <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 dark:text-white mb-3">
             Apa yang Deep-Scan Periksa?
           </h2>
-          <p class="text-neutral-600 text-lg max-w-2xl mx-auto">
+          <p class="text-neutral-600 dark:text-slate-400 text-lg max-w-2xl mx-auto">
             Pemindaian dilakukan dalam 4 fase secara berurutan untuk hasil yang komprehensif
           </p>
         </div>
@@ -120,11 +131,11 @@ import {
         <div class="mb-8">
           <div class="flex items-center gap-3 mb-4">
             <div class="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold">1</div>
-            <h3 class="text-xl font-bold text-neutral-900">Reconnaissance</h3>
+            <h3 class="text-xl font-bold text-neutral-900 dark:text-white">Reconnaissance</h3>
             <Badge variant="outline" class="text-blue-600 border-blue-200">Fase 1</Badge>
           </div>
           <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 ml-11">
-            <Card class="border border-blue-100 bg-white hover:shadow-md hover:border-blue-300 transition-all">
+            <Card class="border border-blue-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <Globe class="h-5 w-5 text-blue-600" />
@@ -167,11 +178,11 @@ import {
         <div class="mb-8">
           <div class="flex items-center gap-3 mb-4">
             <div class="h-8 w-8 rounded-full bg-purple-600 text-white flex items-center justify-center text-sm font-bold">2</div>
-            <h3 class="text-xl font-bold text-neutral-900">HTTP Security Configuration</h3>
+            <h3 class="text-xl font-bold text-neutral-900 dark:text-white">HTTP Security Configuration</h3>
             <Badge variant="outline" class="text-purple-600 border-purple-200">Fase 2</Badge>
           </div>
           <div class="grid md:grid-cols-2 gap-4 ml-11">
-            <Card class="border border-purple-100 bg-white hover:shadow-md hover:border-purple-300 transition-all">
+            <Card class="border border-purple-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <ShieldAlert class="h-5 w-5 text-purple-600" />
@@ -180,7 +191,7 @@ import {
                 <p class="text-xs text-neutral-500">Memeriksa CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy</p>
               </CardContent>
             </Card>
-            <Card class="border border-purple-100 bg-white hover:shadow-md hover:border-purple-300 transition-all">
+            <Card class="border border-purple-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-purple-300 dark:hover:border-purple-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <ExternalLink class="h-5 w-5 text-purple-600" />
@@ -196,11 +207,11 @@ import {
         <div class="mb-8">
           <div class="flex items-center gap-3 mb-4">
             <div class="h-8 w-8 rounded-full bg-amber-600 text-white flex items-center justify-center text-sm font-bold">3</div>
-            <h3 class="text-xl font-bold text-neutral-900">Proteksi & Autentikasi</h3>
+            <h3 class="text-xl font-bold text-neutral-900 dark:text-white">Proteksi & Autentikasi</h3>
             <Badge variant="outline" class="text-amber-600 border-amber-200">Fase 3</Badge>
           </div>
           <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 ml-11">
-            <Card class="border border-amber-100 bg-white hover:shadow-md hover:border-amber-300 transition-all">
+            <Card class="border border-amber-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-amber-300 dark:hover:border-amber-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <Shield class="h-5 w-5 text-amber-600" />
@@ -209,7 +220,7 @@ import {
                 <p class="text-xs text-neutral-500">Deteksi keberadaan Web Application Firewall (Cloudflare, Sucuri, dll)</p>
               </CardContent>
             </Card>
-            <Card class="border border-amber-100 bg-white hover:shadow-md hover:border-amber-300 transition-all">
+            <Card class="border border-amber-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-amber-300 dark:hover:border-amber-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <Activity class="h-5 w-5 text-amber-600" />
@@ -218,7 +229,7 @@ import {
                 <p class="text-xs text-neutral-500">Memeriksa apakah server membatasi jumlah request untuk mencegah brute-force</p>
               </CardContent>
             </Card>
-            <Card class="border border-amber-100 bg-white hover:shadow-md hover:border-amber-300 transition-all">
+            <Card class="border border-amber-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-amber-300 dark:hover:border-amber-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <KeyRound class="h-5 w-5 text-amber-600" />
@@ -234,11 +245,11 @@ import {
         <div class="mb-8">
           <div class="flex items-center gap-3 mb-4">
             <div class="h-8 w-8 rounded-full bg-red-600 text-white flex items-center justify-center text-sm font-bold">4</div>
-            <h3 class="text-xl font-bold text-neutral-900">Web Vulnerabilities</h3>
+            <h3 class="text-xl font-bold text-neutral-900 dark:text-white">Web Vulnerabilities</h3>
             <Badge variant="outline" class="text-red-600 border-red-200">Fase 4</Badge>
           </div>
           <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 ml-11">
-            <Card class="border border-red-100 bg-white hover:shadow-md hover:border-red-300 transition-all">
+            <Card class="border border-red-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-red-300 dark:hover:border-red-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <Database class="h-5 w-5 text-red-600" />
@@ -247,7 +258,7 @@ import {
                 <p class="text-xs text-neutral-500">Deteksi kerentanan injeksi SQL pada parameter URL dan form input (Error-based & Blind)</p>
               </CardContent>
             </Card>
-            <Card class="border border-red-100 bg-white hover:shadow-md hover:border-red-300 transition-all">
+            <Card class="border border-red-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-red-300 dark:hover:border-red-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <Code2 class="h-5 w-5 text-red-600" />
@@ -256,7 +267,7 @@ import {
                 <p class="text-xs text-neutral-500">Mendeteksi kerentanan XSS Reflected yang memungkinkan injeksi script berbahaya</p>
               </CardContent>
             </Card>
-            <Card class="border border-red-100 bg-white hover:shadow-md hover:border-red-300 transition-all">
+            <Card class="border border-red-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-red-300 dark:hover:border-red-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <Server class="h-5 w-5 text-red-600" />
@@ -265,7 +276,7 @@ import {
                 <p class="text-xs text-neutral-500">Mendeteksi kerentanan eksekusi perintah OS melalui input yang tidak tersanitasi</p>
               </CardContent>
             </Card>
-            <Card class="border border-red-100 bg-white hover:shadow-md hover:border-red-300 transition-all">
+            <Card class="border border-red-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-red-300 dark:hover:border-red-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <ExternalLink class="h-5 w-5 text-red-600" />
@@ -274,7 +285,7 @@ import {
                 <p class="text-xs text-neutral-500">Mendeteksi redirect ke domain eksternal yang dapat digunakan untuk phishing</p>
               </CardContent>
             </Card>
-            <Card class="border border-red-100 bg-white hover:shadow-md hover:border-red-300 transition-all">
+            <Card class="border border-red-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-red-300 dark:hover:border-red-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <Upload class="h-5 w-5 text-red-600" />
@@ -283,7 +294,7 @@ import {
                 <p class="text-xs text-neutral-500">Memeriksa validasi upload file untuk mencegah upload webshell dan file berbahaya</p>
               </CardContent>
             </Card>
-            <Card class="border border-red-100 bg-white hover:shadow-md hover:border-red-300 transition-all">
+            <Card class="border border-red-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 hover:shadow-md hover:border-red-300 dark:hover:border-red-600 transition-all">
               <CardContent class="pt-5 pb-4 space-y-2">
                 <div class="flex items-center gap-2">
                   <FolderOpen class="h-5 w-5 text-red-600" />
@@ -299,51 +310,51 @@ import {
     </section>
 
     <!-- Features Section -->
-    <section class="container mx-auto px-4 py-16 bg-white/50">
+    <section class="container mx-auto px-4 py-16 bg-white/50 dark:bg-slate-800/30">
       <div class="max-w-5xl mx-auto">
         
         <div class="text-center mb-12">
-          <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-3">
+          <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 dark:text-white mb-3">
             Fitur Unggulan
           </h2>
-          <p class="text-neutral-600 text-lg">
+          <p class="text-neutral-600 dark:text-slate-400 text-lg">
             Dirancang untuk kemudahan dan hasil yang profesional
           </p>
         </div>
 
         <div class="grid md:grid-cols-3 gap-6">
           
-          <Card class="border border-blue-200 bg-gradient-to-b from-blue-50 to-white hover:shadow-lg transition-all">
-            <CardContent class="pt-6 space-y-3">
-              <div class="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center">
-                <Scan class="h-6 w-6 text-blue-600" />
+          <Card class="border border-blue-200 dark:border-slate-700 bg-gradient-to-b from-blue-50 to-white dark:from-slate-800 dark:to-slate-900 hover:shadow-lg transition-all">
+            <CardContent class="p-4 space-y-2">
+              <div class="h-10 w-10 rounded-xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                <Scan class="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 class="font-semibold text-lg text-neutral-900">Pemindaian Otomatis</h3>
-              <p class="text-sm text-neutral-600">
+              <h3 class="font-semibold text-base text-neutral-900 dark:text-white">Pemindaian Otomatis</h3>
+              <p class="text-xs text-neutral-600 dark:text-slate-400">
                 Cukup masukkan URL target — Deep-Scan menjalankan 4 fase pemindaian secara otomatis tanpa konfigurasi rumit
               </p>
             </CardContent>
           </Card>
 
-          <Card class="border border-purple-200 bg-gradient-to-b from-purple-50 to-white hover:shadow-lg transition-all">
-            <CardContent class="pt-6 space-y-3">
-              <div class="h-12 w-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                <BarChart3 class="h-6 w-6 text-purple-600" />
+          <Card class="border border-purple-200 dark:border-slate-700 bg-gradient-to-b from-purple-50 to-white dark:from-slate-800 dark:to-slate-900 hover:shadow-lg transition-all">
+            <CardContent class="p-4 space-y-2">
+              <div class="h-10 w-10 rounded-xl bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
+                <BarChart3 class="h-5 w-5 text-purple-600 dark:text-purple-400" />
               </div>
-              <h3 class="font-semibold text-lg text-neutral-900">Scoring CVSS v3.1</h3>
-              <p class="text-sm text-neutral-600">
+              <h3 class="font-semibold text-base text-neutral-900 dark:text-white">Scoring CVSS v3.1</h3>
+              <p class="text-xs text-neutral-600 dark:text-slate-400">
                 Setiap kerentanan dinilai menggunakan standar industri CVSS v3.1 dari FIRST.org dengan severity otomatis
               </p>
             </CardContent>
           </Card>
 
-          <Card class="border border-green-200 bg-gradient-to-b from-green-50 to-white hover:shadow-lg transition-all">
-            <CardContent class="pt-6 space-y-3">
-              <div class="h-12 w-12 rounded-xl bg-green-100 flex items-center justify-center">
-                <FileText class="h-6 w-6 text-green-600" />
+          <Card class="border border-green-200 dark:border-slate-700 bg-gradient-to-b from-green-50 to-white dark:from-slate-800 dark:to-slate-900 hover:shadow-lg transition-all">
+            <CardContent class="p-4 space-y-2">
+              <div class="h-10 w-10 rounded-xl bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
+                <FileText class="h-5 w-5 text-green-600 dark:text-green-400" />
               </div>
-              <h3 class="font-semibold text-lg text-neutral-900">Laporan PDF Profesional</h3>
-              <p class="text-sm text-neutral-600">
+              <h3 class="font-semibold text-base text-neutral-900 dark:text-white">Laporan PDF Profesional</h3>
+              <p class="text-xs text-neutral-600 dark:text-slate-400">
                 Generate laporan PDF lengkap dengan deskripsi kerentanan, skor CVSS, proof-of-concept, dan rekomendasi perbaikan
               </p>
             </CardContent>
@@ -357,35 +368,35 @@ import {
     <section class="container mx-auto px-4 py-16">
       <div class="max-w-4xl mx-auto">
         <div class="text-center mb-12">
-          <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-3">
+          <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 dark:text-white mb-3">
             Cara Kerja
           </h2>
-          <p class="text-neutral-600 text-lg">
+          <p class="text-neutral-600 dark:text-slate-400 text-lg">
             Tiga langkah mudah untuk memindai website Anda
           </p>
         </div>
 
-        <div class="grid md:grid-cols-3 gap-8">
-          <div class="text-center space-y-3">
-            <div class="h-14 w-14 rounded-2xl bg-blue-100 flex items-center justify-center mx-auto">
-              <span class="text-2xl font-bold text-blue-600">1</span>
+        <div class="grid md:grid-cols-3 gap-6 sm:gap-8">
+          <div class="text-center space-y-2">
+            <div class="h-12 w-12 rounded-2xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center mx-auto">
+              <span class="text-xl font-bold text-blue-600 dark:text-blue-400">1</span>
             </div>
-            <h3 class="font-semibold text-neutral-900">Masukkan URL</h3>
-            <p class="text-sm text-neutral-600">Daftar akun lalu masukkan URL website yang ingin dipindai</p>
+            <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Masukkan URL</h3>
+            <p class="text-xs text-neutral-600 dark:text-slate-400">Daftar akun lalu masukkan URL website yang ingin dipindai</p>
           </div>
-          <div class="text-center space-y-3">
-            <div class="h-14 w-14 rounded-2xl bg-indigo-100 flex items-center justify-center mx-auto">
-              <span class="text-2xl font-bold text-indigo-600">2</span>
+          <div class="text-center space-y-2">
+            <div class="h-12 w-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center mx-auto">
+              <span class="text-xl font-bold text-indigo-600 dark:text-indigo-400">2</span>
             </div>
-            <h3 class="font-semibold text-neutral-900">Tunggu Hasil</h3>
-            <p class="text-sm text-neutral-600">Deep-Scan menjalankan 4 fase pemindaian otomatis secara berurutan</p>
+            <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Tunggu Hasil</h3>
+            <p class="text-xs text-neutral-600 dark:text-slate-400">Deep-Scan menjalankan 4 fase pemindaian otomatis secara berurutan</p>
           </div>
-          <div class="text-center space-y-3">
-            <div class="h-14 w-14 rounded-2xl bg-green-100 flex items-center justify-center mx-auto">
-              <span class="text-2xl font-bold text-green-600">3</span>
+          <div class="text-center space-y-2">
+            <div class="h-12 w-12 rounded-2xl bg-green-100 dark:bg-green-900/50 flex items-center justify-center mx-auto">
+              <span class="text-xl font-bold text-green-600 dark:text-green-400">3</span>
             </div>
-            <h3 class="font-semibold text-neutral-900">Download Laporan</h3>
-            <p class="text-sm text-neutral-600">Lihat hasil di dashboard dan unduh laporan PDF profesional</p>
+            <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Download Laporan</h3>
+            <p class="text-xs text-neutral-600 dark:text-slate-400">Lihat hasil di dashboard dan unduh laporan PDF profesional</p>
           </div>
         </div>
       </div>
@@ -409,9 +420,9 @@ import {
             </p>
 
             <router-link to="/register">
-              <Button class="bg-white text-blue-600 hover:bg-blue-50 px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all">
+              <Button class="bg-white text-blue-600 hover:bg-blue-50 px-5 py-3 text-sm shadow-md hover:shadow-lg transition-all">
                 Daftar Gratis Sekarang
-                <ArrowRight class="h-5 w-5 ml-2" />
+                <ArrowRight class="h-4 w-4 ml-2" />
               </Button>
             </router-link>
 
@@ -422,7 +433,7 @@ import {
     </section>
 
     <!-- Footer -->
-    <footer class="border-t bg-white/80 backdrop-blur-md mt-8">
+    <footer class="border-t bg-white/80 dark:bg-slate-900/80 backdrop-blur-md mt-8 dark:border-slate-800">
       <div class="container mx-auto px-4 py-8">
         <div class="flex flex-col md:flex-row items-center justify-between gap-4">
           
@@ -430,14 +441,14 @@ import {
             <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
               <Shield class="h-5 w-5 text-white" />
             </div>
-            <span class="font-semibold text-neutral-700">Deep-Scan</span>
+            <span class="font-semibold text-neutral-700 dark:text-slate-300">Deep-Scan</span>
           </div>
 
           <div class="text-center md:text-right">
-            <p class="text-sm text-neutral-600">
+            <p class="text-sm text-neutral-600 dark:text-slate-400">
               © 2026 Deep-Scan — Tugas Akhir Politeknik Negeri Madiun
             </p>
-            <p class="text-xs text-neutral-400 mt-1">
+            <p class="text-xs text-neutral-400 dark:text-slate-600 mt-1">
               Built with Flask, Vue.js & ReportLab · Scoring CVSS v3.1
             </p>
           </div>
