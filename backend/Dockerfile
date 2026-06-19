@@ -24,5 +24,4 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Command untuk run backend
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:app"]
