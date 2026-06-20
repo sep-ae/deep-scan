@@ -363,14 +363,9 @@ class FileUploadChecker:
         )
 
         for ext, mime, content in sorted_exts:
-            if self._vuln_found.is_set():
-                break
-
             filename = f"scan_{self._uid}.{ext}"
 
             for field in UPLOAD_FIELD_NAMES:
-                if self._vuln_found.is_set():
-                    break
 
                 r = self._post_raw(
                     upload_url,
@@ -425,8 +420,6 @@ class FileUploadChecker:
                         f"{upload_url} (field={field}, ext=.{ext})"
                         + (f" -> {resolved}" if resolved else "")
                     )
-                    self._vuln_found.set()
-                    break
 
     # ── Step 4: Directory listing ─────────────────────────────────────────────
 
@@ -475,8 +468,6 @@ class FileUploadChecker:
             if endpoints:
                 _step(3, 3, "Testing dangerous file upload ...")
                 for url in endpoints:
-                    if self._vuln_found.is_set():
-                        break
                     _info(f"Testing: {url}")
                     self._test_upload_endpoint(url, results)
             else:

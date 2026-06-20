@@ -204,13 +204,7 @@ class XSSChecker:
         all_params = list(dict.fromkeys(TEST_PARAMS + self.discovered.get('params', [])))
 
         for param in all_params:
-            if self._vuln_found.is_set():
-                return
-
             for payload in payloads:
-                if self._vuln_found.is_set():
-                    return
-
                 with self._lock:
                     results['total_tested'] += 1
 
@@ -250,8 +244,7 @@ class XSSChecker:
                                     'notable_files': [],
                                     'is_nested':     False,
                                 })
-                            self._vuln_found.set()
-                        return
+                        continue
 
                 except HostDeadException:
                     raise
@@ -259,9 +252,6 @@ class XSSChecker:
                     pass
 
     def _scan_forms(self, results: Dict):
-        if self._vuln_found.is_set():
-            return
-
         forms = self.discovered.get('forms', [])
         if not forms:
             return
@@ -269,17 +259,11 @@ class XSSChecker:
         _info(f"Ditemukan {len(forms)} form, testing XSS ...")
 
         for form in forms:
-            if self._vuln_found.is_set():
-                break
             for inp in form['inputs']:
-                if self._vuln_found.is_set():
-                    break
                 param  = inp['name']
                 action = form['action']
 
                 for payload in XSS_PAYLOADS[:6]:
-                    if self._vuln_found.is_set():
-                        break
                     with self._lock:
                         results['total_tested'] += 1
 
@@ -333,8 +317,7 @@ class XSSChecker:
                                         'notable_files': [],
                                         'is_nested':     False,
                                     })
-                                self._vuln_found.set()
-                            break
+                                continue
 
                     except HostDeadException:
                         raise
@@ -370,10 +353,6 @@ class XSSChecker:
                     for url in endpoints
                 ]
                 for f in as_completed(futures):
-                    if self._vuln_found.is_set():
-                        for remaining in futures:
-                            remaining.cancel()
-                        break
                     try: f.result()
                     except HostDeadException:
                         for remaining in futures:

@@ -387,8 +387,6 @@ class SQLInjectionChecker:
     def _error_based(self, url: str, param: str, results: Dict) -> bool:
         response_sigs = []  # Track (status, body_len) for smart skip
         for payload in ERROR_PAYLOADS:
-            if self._vuln_found.is_set():
-                return False
             with self._lock:
                 results['total_tested'] += 1
             r = _raw_get(f"{url}?{param}={_enc(payload)}",
@@ -426,8 +424,6 @@ class SQLInjectionChecker:
             empty_len = len(r_empty.text)
 
             for true_p, false_p in BOOL_PAIRS:
-                if self._vuln_found.is_set():
-                    return False
                 with self._lock:
                     results['total_tested'] += 2
 
@@ -524,8 +520,6 @@ class SQLInjectionChecker:
         payloads_to_try = TIME_PAYLOADS_ALL.get(detected_db, TIME_PAYLOADS_ALL['Unknown'])
 
         for payload, db_hint in payloads_to_try:
-            if self._vuln_found.is_set():
-                return False
             with self._lock:
                 results['total_tested'] += 1
             try:
@@ -611,8 +605,6 @@ class SQLInjectionChecker:
     # ── Scan per endpoint ─────────────────────────────────────────────────────
 
     def _scan_endpoint(self, url: str, results: Dict):
-        if self._vuln_found.is_set():
-            return
 
         # Quick probe: check if endpoint processes query params at all
         # If response is identical with/without a random param, skip it
@@ -637,24 +629,14 @@ class SQLInjectionChecker:
             ))
 
         def _test_param(param):
-            if self._vuln_found.is_set():
-                return
             if self._error_based(url, param, results):
-                self._vuln_found.set()
-                return
-            if self._vuln_found.is_set():
-                return
+                pass
             if self._boolean_based(url, param, results):
-                self._vuln_found.set()
-                return
+                pass
 
         with ThreadPoolExecutor(max_workers=5) as ex:
             futures = [ex.submit(_test_param, p) for p in all_params]
             for f in as_completed(futures):
-                if self._vuln_found.is_set():
-                    for rem in futures:
-                        rem.cancel()
-                    break
                 try:
                     f.result()
                 except HostDeadException:
@@ -735,14 +717,8 @@ class SQLInjectionChecker:
                 time_endpoints = active_endpoints[:10]  # Limit to top 10 endpoints
                 _info(f"Time-based: {len(time_endpoints)} endpoint × {min(len(all_params), 3)} param")
                 for url in time_endpoints:
-                    found = False
                     for param in all_params[:3]:  # Top 3 params only
-                        if found or self._vuln_found.is_set():
-                            break
-                        if self._time_based(url, param, results):
-                            found = True
-                    if self._vuln_found.is_set():
-                        break
+                        self._time_based(url, param, results)
             else:
                 _step(4, 4, "Time-based dilewati (sudah ada temuan)")
 

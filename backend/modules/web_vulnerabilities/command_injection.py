@@ -263,8 +263,6 @@ class CommandInjectionChecker:
         live = []
 
         def _check(url):
-            if self._vuln_found.is_set():
-                return None
             try:
                 r = self._client.get(url, headers=HEADERS, timeout=4)
                 if r and r.status_code not in (404, 410):
@@ -327,15 +325,11 @@ class CommandInjectionChecker:
                             'notable_files': [],
                             'is_nested':     False,
                         })
-                    self._vuln_found.set()
                 return True
         return False
 
     def _inject_one(self, url: str, param: str, payload: str,
                     results: Dict, method: str = 'GET') -> bool:
-        if self._vuln_found.is_set():
-            return False
-
         with self._lock:
             results['total_tested'] += 1
 
@@ -351,9 +345,6 @@ class CommandInjectionChecker:
         return self._check_response(r, url, param, payload, method, results)
 
     def _inject_endpoint(self, url: str, results: Dict):
-        if self._vuln_found.is_set():
-            return
-
         # Endpoint probe: check if endpoint processes query params
         try:
             r_bare  = self._client.get(url, headers=JSON_HEADERS, timeout=4)
@@ -377,10 +368,8 @@ class CommandInjectionChecker:
         payloads = CMD_PAYLOADS + (WAF_BYPASS_PAYLOADS if self._waf_detected else [])
 
         def task(param: str, payload: str):
-            if self._vuln_found.is_set():
-                return
             found = self._inject_one(url, param, payload, results, 'GET')
-            if not found and not self._vuln_found.is_set():
+            if not found:
                 self._inject_one(url, param, payload, results, 'POST')
 
         with ThreadPoolExecutor(max_workers=10) as ex:
@@ -390,10 +379,6 @@ class CommandInjectionChecker:
                 for payload in payloads
             ]
             for f in as_completed(futures):
-                if self._vuln_found.is_set():
-                    for remaining in futures:
-                        remaining.cancel()
-                    break
                 try:
                     f.result()
                 except HostDeadException:
@@ -409,11 +394,7 @@ class CommandInjectionChecker:
         all_params = list(dict.fromkeys(TEST_PARAMS + self.discovered.get('params', [])))
         time_eps = active_endpoints[:10]  # Limit time-based scope
         for url in time_eps:
-            if self._vuln_found.is_set():
-                break
             for param in all_params[:3]:  # Top 3 params only
-                if self._vuln_found.is_set():
-                    break
                 for payload in TIME_PAYLOADS:
                     try:
                         start   = time.time()
@@ -453,7 +434,6 @@ class CommandInjectionChecker:
                                         'notable_files': [],
                                         'is_nested':     False,
                                     })
-                                self._vuln_found.set()
                             break
                     except HostDeadException:
                         raise
@@ -468,17 +448,11 @@ class CommandInjectionChecker:
             return
             
         for form in forms:
-            if self._vuln_found.is_set():
-                break
             for inp in form['inputs']:
-                if self._vuln_found.is_set():
-                    break
                 param  = inp['name']
                 action = form['action']
                 method = 'POST' if form['method'] == 'post' else 'GET'
                 for payload in CMD_PAYLOADS:
-                    if self._vuln_found.is_set():
-                        break
                     self._inject_one(action, param, payload, results, method)
 
     # ── Main run ──────────────────────────────────────────────────────────────
@@ -512,10 +486,6 @@ class CommandInjectionChecker:
                     for url in active_endpoints
                 ]
                 for f in as_completed(futures):
-                    if self._vuln_found.is_set():
-                        for rem in futures:
-                            rem.cancel()
-                        break
                     try:
                         f.result()
                     except HostDeadException:

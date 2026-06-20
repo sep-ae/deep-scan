@@ -394,7 +394,7 @@ def process_web_vuln_results(web_vuln_results: dict, result_id: int):
             ))
             recon_count += 1
 
-            if vuln_key and vuln_key != vuln_key_used:
+            if vuln_key:
                 # Build PoC data dari vulnerable_paths
                 poc_data = _extract_poc_data(checker_name, vp)
                 _create_vulnerability_entry(vuln_key, result_id, url, poc_data=poc_data)
@@ -422,7 +422,7 @@ def process_web_vuln_results(web_vuln_results: dict, result_id: int):
             ))
             recon_count += 1
 
-            if vuln_key and vuln_key != vuln_key_used:
+            if vuln_key:
                 _create_vulnerability_entry(vuln_key, result_id, url)
                 vuln_saved   += 1
                 vuln_key_used = vuln_key
