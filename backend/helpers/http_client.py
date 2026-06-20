@@ -36,7 +36,7 @@ class HttpClient:
         backoff_factor: float = 0.3,
         proxy: Optional[str] = None,
         allow_redirects: bool = True,
-        pool_size: int = 50,  # fix: default pool besar untuk scanning paralel
+        pool_size: int = 100,  # fix: default pool besar untuk scanning paralel
     ):
         self.timeout = timeout
         self.verify = verify
@@ -61,12 +61,13 @@ class HttpClient:
             raise_on_status=False,
         )
 
-        # pool_connections=20: jumlah host berbeda yang bisa ditangani sekaligus
-        # pool_maxsize=pool_size: max koneksi paralel per host (default 50)
+        # pool_connections=50: jumlah host berbeda yang bisa ditangani sekaligus
+        # pool_maxsize=pool_size: max koneksi paralel per host
         adapter = HTTPAdapter(
             max_retries=retry,
-            pool_connections=20,
+            pool_connections=50,
             pool_maxsize=pool_size,
+            pool_block=True
         )
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
