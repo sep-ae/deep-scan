@@ -140,6 +140,9 @@ class SPACrawler:
                 if PLAYWRIGHT_AVAILABLE:
                     try:
                         pw_result = self._crawl_with_playwright()
+                        if pw_result.get('error'):
+                            raise Exception(pw_result['error'])
+
                         result['playwright_used'] = True
                         result['html']            = pw_result.get('html', raw_html)
                         result['cookies']         = pw_result.get('cookies', {})
