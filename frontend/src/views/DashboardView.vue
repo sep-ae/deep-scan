@@ -435,33 +435,33 @@ const getStatusColor = (vulnCount) => {
             <div v-else class="divide-y divide-neutral-100 dark:divide-slate-800">
               <div 
                 v-for="scan in recentScans" 
-                :key="scan.id"
+                :key="scan.scan_id"
                 class="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-6 hover:bg-neutral-50/50 dark:hover:bg-slate-800/50 transition-colors group"
               >
                 <div class="flex items-start gap-4 mb-4 sm:mb-0">
                   <div :class="[
                     'h-10 w-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5',
-                    getStatusConfig(scan.vulnerabilities_count).class
+                    getStatusBadge(scan.vuln_count).class
                   ]">
-                    <component :is="getStatusIcon(scan.vulnerabilities_count)" class="h-5 w-5" />
+                    <component :is="getStatusIcon(scan.vuln_count)" class="h-5 w-5" />
                   </div>
                   <div>
-                    <h4 class="font-semibold text-neutral-900 dark:text-white text-base mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{{ scan.target_url }}</h4>
+                    <h4 class="font-semibold text-neutral-900 dark:text-white text-base mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{{ scan.target }}</h4>
                     <div class="flex items-center gap-3 text-xs text-neutral-500 dark:text-slate-400">
                       <span class="flex items-center gap-1.5">
                         <Clock class="h-3.5 w-3.5" />
-                        {{ formatDate(scan.created_at) }}
+                        {{ scan.date }}
                       </span>
                       <span class="w-1 h-1 rounded-full bg-neutral-300 dark:bg-slate-600"></span>
                       <span class="font-medium text-neutral-700 dark:text-slate-300">
-                        {{ scan.vulnerabilities_count }} Kerentanan
+                        {{ scan.vuln_count }} Kerentanan
                       </span>
                     </div>
                   </div>
                 </div>
                 
                 <Button 
-                  @click="goToDetail(scan.id)"
+                  @click="goToDetail(scan.scan_id)"
                   variant="secondary" 
                   size="sm" 
                   class="w-full sm:w-auto bg-white dark:bg-slate-800 border border-neutral-200 dark:border-slate-700 shadow-sm hover:bg-neutral-50 dark:hover:bg-slate-700 dark:text-white"

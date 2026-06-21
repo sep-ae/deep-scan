@@ -3,7 +3,7 @@ import re
 import time
 import threading
 from typing import Dict, Any, Optional, List
-from urllib.parse import urljoin, quote, urlparse
+from urllib.parse import urljoin, quote, unquote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from helpers.http_client import HttpClient, HostDeadException
@@ -53,6 +53,7 @@ from helpers.waf_checker import WAF_BYPASS_HEADERS
 # ── Payloads ──────────────────────────────────────────────────────────────────
 
 _CMD_TOKEN = 'xpwn7z_rce_confirmed_xpwn7z'
+_CANARY    = 'dscanary_fp_8k3m'
 
 CMD_PAYLOADS = [
     f'; echo {_CMD_TOKEN}',
@@ -223,13 +224,92 @@ class CommandInjectionChecker:
         return WAFChecker.is_cloudflare_page(text)
 
     def _get_with_bypass(self, url: str):
-        # Kalau mau lebih proper bisa passing WAFChecker instance dari CrawlerHelper,
-        # tapi sementara kita coba header manual
         for extra_h in WAF_BYPASS_HEADERS:
             r = self._client.get(url, headers={**JSON_HEADERS, **extra_h})
             if r and not self._is_cloudflare_page(r.text):
                 return r
         return None
+
+    # ── Anti false-positive: reflection detection ─────────────────────────────
+
+    def _param_reflects_input(self, url: str, param: str, method: str = 'GET') -> bool:
+        """
+        Cek apakah parameter value di-reflect dalam response body.
+        Mengirim canary string unik — jika muncul di response,
+        berarti parameter ini me-reflect semua input.
+        """
+        try:
+            if method == 'POST':
+                r = self._client.post(
+                    url, data={param: _CANARY}, headers=JSON_HEADERS, timeout=4
+                )
+            else:
+                r = self._client.get(
+                    f"{url}?{param}={_CANARY}", headers=JSON_HEADERS, timeout=4
+                )
+            if r and not self._is_cloudflare_page(r.text):
+                return _CANARY in r.text.lower()
+        except Exception:
+            pass
+        return False
+
+    def _is_only_reflection(self, response_text: str, payload: str, signature: str) -> bool:
+        """
+        Cek apakah signature hanya muncul karena input di-reflect di response.
+        Menghapus semua bentuk reflected input (raw, URL-encoded, HTML entity,
+        JSON unicode escape) lalu cek apakah signature masih ada.
+
+        Returns True jika hanya reflection (= false positive, harus di-skip).
+        """
+        body = response_text.lower()
+        raw_injected = f"127.0.0.1{payload}".lower()
+
+        cleaned = body
+
+        # 1. Hapus raw injected value
+        cleaned = cleaned.replace(raw_injected, '')
+
+        # 2. Hapus URL-encoded variants
+        try:
+            cleaned = cleaned.replace(quote(raw_injected, safe='').lower(), '')
+            cleaned = cleaned.replace(quote(raw_injected, safe='/').lower(), '')
+            cleaned = cleaned.replace(quote(payload.lower(), safe='').lower(), '')
+        except Exception:
+            pass
+
+        # 3. Hapus HTML entity encoded variant
+        html_esc = raw_injected
+        for old, new in [('&', '&amp;'), ('"', '&quot;'), ("'", '&#39;'),
+                         ('<', '&lt;'), ('>', '&gt;')]:
+            html_esc = html_esc.replace(old, new)
+        cleaned = cleaned.replace(html_esc, '')
+
+        # 4. Hapus JSON/JavaScript unicode escape variant
+        #    contoh: & → \u0026, < → \u003c, > → \u003e
+        json_esc = raw_injected
+        for ch, esc in [('&', '\\u0026'), ('<', '\\u003c'), ('>', '\\u003e'),
+                        ('"', '\\u0022'), ("'", '\\u0027'), ('/', '\\/')]:
+            json_esc = json_esc.replace(ch, esc)
+        cleaned = cleaned.replace(json_esc, '')
+
+        # 5. Untuk WAF bypass payloads (pre-encoded), hapus decoded version
+        try:
+            decoded_payload = unquote(payload).lower()
+            if decoded_payload != payload.lower():
+                decoded_injected = f"127.0.0.1{decoded_payload}"
+                cleaned = cleaned.replace(decoded_injected, '')
+        except Exception:
+            pass
+
+        # 6. Hapus juga signature yang muncul di dalam URL context
+        #    Cek apakah signature hanya ada di dalam ?param=...sig... pattern
+        cleaned = re.sub(
+            r'[?&][a-z_]+=([^&"\s]*' + re.escape(signature) + r'[^&"\s]*)',
+            '', cleaned
+        )
+
+        # Jika signature masih ada setelah semua stripping → real RCE
+        return signature not in cleaned
 
     # ── Endpoint discovery ────────────────────────────────────────────────────
 
@@ -283,17 +363,47 @@ class CommandInjectionChecker:
 
         return live
 
-    # Injection core
+    # ── Injection core ─────────────────────────────────────────────────────────
+
     def _check_response(self, r, url: str, param: str,
-                        payload: str, method: str, results: Dict) -> bool:
+                        payload: str, method: str, results: Dict,
+                        baseline_sigs: set = None,
+                        reflects_input: bool = False) -> bool:
+        """
+        Cek apakah response mengandung signature command injection.
+
+        Anti false-positive berlapis:
+        1. Skip signature yang sudah ada di baseline (tanpa payload)
+        2. Jika parameter me-reflect input (canary test), skip custom token
+           karena token pasti muncul dari URL reflection, bukan command execution
+        3. Reflection stripping sebagai fallback untuk signature lain
+        """
         if not r or self._is_cloudflare_page(r.text):
             return False
 
-        # Dihapus strict check 'text/html' agar tidak false negative di aplikasi web klasik
-        
+        if baseline_sigs is None:
+            baseline_sigs = set()
+
         body_lower = r.text.lower()
         for sig in CMD_SUCCESS_SIGNATURES:
             if sig in body_lower:
+                # Anti-FP 1: Skip kalau signature sudah ada di response tanpa payload
+                if sig in baseline_sigs:
+                    continue
+
+                # Anti-FP 2: Jika parameter me-reflect input DAN signature
+                # adalah custom token → pasti false positive (token muncul
+                # karena URL/input di-reflect, bukan command execution)
+                if reflects_input and sig == _CMD_TOKEN:
+                    _info(f"Skip canary-detected FP: custom token di {url} (param={param})")
+                    continue
+
+                # Anti-FP 3: Reflection stripping — hapus reflected input
+                # dari response body, lalu cek apakah signature masih ada
+                if self._is_only_reflection(r.text, payload, sig):
+                    _info(f"Skip reflection FP: sig='{sig}' di {url} (param={param})")
+                    continue
+
                 key = f"{method}:{url}:{param}:{sig}"
                 registered = False
                 with self._lock:
@@ -328,8 +438,35 @@ class CommandInjectionChecker:
                 return True
         return False
 
+    def _get_baseline_signatures(self, url: str, param: str, method: str = 'GET') -> set:
+        """
+        Ambil response baseline (tanpa payload) dan cek apakah ada
+        signature yang sudah muncul secara natural.
+        """
+        baseline_sigs = set()
+        try:
+            if method == 'POST':
+                r = self._client.post(
+                    url, data={param: '127.0.0.1'}, headers=JSON_HEADERS, timeout=4
+                )
+            else:
+                r = self._client.get(
+                    f"{url}?{param}=127.0.0.1", headers=JSON_HEADERS, timeout=4
+                )
+            if r and not self._is_cloudflare_page(r.text):
+                body_lower = r.text.lower()
+                for sig in CMD_SUCCESS_SIGNATURES:
+                    if sig in body_lower:
+                        baseline_sigs.add(sig)
+                        _info(f"Baseline sig: '{sig}' di {url} (param={param})")
+        except Exception:
+            pass
+        return baseline_sigs
+
     def _inject_one(self, url: str, param: str, payload: str,
-                    results: Dict, method: str = 'GET') -> bool:
+                    results: Dict, method: str = 'GET',
+                    baseline_sigs: set = None,
+                    reflects_input: bool = False) -> bool:
         with self._lock:
             results['total_tested'] += 1
 
@@ -342,7 +479,10 @@ class CommandInjectionChecker:
             r = self._get_with_bypass(test_url) or \
                 self._client.get(test_url, headers=JSON_HEADERS)
 
-        return self._check_response(r, url, param, payload, method, results)
+        return self._check_response(
+            r, url, param, payload, method, results,
+            baseline_sigs, reflects_input
+        )
 
     def _inject_endpoint(self, url: str, results: Dict):
         # Endpoint probe: check if endpoint processes query params
@@ -367,10 +507,21 @@ class CommandInjectionChecker:
 
         payloads = CMD_PAYLOADS + (WAF_BYPASS_PAYLOADS if self._waf_detected else [])
 
-        def task(param: str, payload: str):
-            found = self._inject_one(url, param, payload, results, 'GET')
+        # Anti false positive: cek baseline & reflection per parameter
+        param_baselines = {}
+        param_reflects  = {}
+        for param in all_params:
+            param_baselines[param] = self._get_baseline_signatures(url, param, 'GET')
+            param_reflects[param]  = self._param_reflects_input(url, param, 'GET')
+            if param_reflects[param]:
+                _info(f"Param '{param}' reflects input di {url} — custom token akan di-skip")
+
+        def task(param, payload):
+            bl   = param_baselines.get(param, set())
+            refl = param_reflects.get(param, False)
+            found = self._inject_one(url, param, payload, results, 'GET', bl, refl)
             if not found:
-                self._inject_one(url, param, payload, results, 'POST')
+                self._inject_one(url, param, payload, results, 'POST', bl, refl)
 
         with ThreadPoolExecutor(max_workers=10) as ex:
             futures = [
@@ -452,8 +603,10 @@ class CommandInjectionChecker:
                 param  = inp['name']
                 action = form['action']
                 method = 'POST' if form['method'] == 'post' else 'GET'
+                bl   = self._get_baseline_signatures(action, param, method)
+                refl = self._param_reflects_input(action, param, method)
                 for payload in CMD_PAYLOADS:
-                    self._inject_one(action, param, payload, results, method)
+                    self._inject_one(action, param, payload, results, method, bl, refl)
 
     # ── Main run ──────────────────────────────────────────────────────────────
 
