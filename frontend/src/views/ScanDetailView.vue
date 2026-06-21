@@ -23,7 +23,8 @@ import RecommendationsTab from '@/components/scan/RecommendationsTab.vue'
 import { 
   ArrowLeft, CircleUser, Menu, Package2, Home, Scan, History,
   AlertTriangle, AlertCircle, Info, CheckCircle2,
-  Clock, ExternalLink, FileText, LogOut, Sun, Moon
+  Clock, ExternalLink, FileText, LogOut, Sun, Moon,
+  BarChart3, Radar, ShieldAlert, Lightbulb
 } from 'lucide-vue-next'
 
 import { useDarkMode } from '@/composables/useDarkMode'
@@ -174,28 +175,28 @@ onMounted(() => {
               </div>
             </div>
             <nav class="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
-              <p class="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest px-3 mb-3">Menu</p>
-              <a @click="goToDashboard" href="#" :class="[isActive('/dashboard') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
-                <div :class="[isActive('/dashboard') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
-                  <Home :class="[isActive('/dashboard') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+              <p class="text-[11px] font-semibold text-neutral-400 dark:text-slate-500 uppercase tracking-widest px-3 mb-3">Menu</p>
+              <a @click="goToDashboard" href="#" :class="[isActive('/dashboard') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-semibold shadow-sm' : 'text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-800', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/dashboard') ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-neutral-100 dark:bg-slate-800', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <Home :class="[isActive('/dashboard') ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-500 dark:text-slate-400', 'h-4 w-4']" />
                 </div>
                 Dashboard
               </a>
-              <a @click="goToScan" href="#" :class="[isActive('/scan') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
-                <div :class="[isActive('/scan') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
-                  <Scan :class="[isActive('/scan') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+              <a @click="goToScan" href="#" :class="[isActive('/scan') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-semibold shadow-sm' : 'text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-800', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/scan') ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-neutral-100 dark:bg-slate-800', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <Scan :class="[isActive('/scan') ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-500 dark:text-slate-400', 'h-4 w-4']" />
                 </div>
                 Scan
               </a>
-              <a @click="goToHistory" href="#" :class="[isActive('/history') ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm' : 'text-neutral-600 hover:bg-neutral-100', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
-                <div :class="[isActive('/history') ? 'bg-blue-100' : 'bg-neutral-100', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
-                  <History :class="[isActive('/history') ? 'text-blue-600' : 'text-neutral-500', 'h-4 w-4']" />
+              <a @click="goToHistory" href="#" :class="[isActive('/history') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-semibold shadow-sm' : 'text-neutral-600 dark:text-slate-400 hover:bg-neutral-100 dark:hover:bg-slate-800', 'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm']">
+                <div :class="[isActive('/history') ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-neutral-100 dark:bg-slate-800', 'h-8 w-8 rounded-lg flex items-center justify-center transition-colors']">
+                  <History :class="[isActive('/history') ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-500 dark:text-slate-400', 'h-4 w-4']" />
                 </div>
                 Riwayat
               </a>
             </nav>
             <div class="px-4 pb-5">
-              <Separator class="mb-4" />
+              <Separator class="mb-4 bg-neutral-200 dark:bg-slate-800" />
               <div class="flex items-center gap-3 p-3 rounded-2xl bg-neutral-50 dark:bg-slate-800/50 border border-neutral-100 dark:border-slate-700 mb-3">
                 <div class="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-md">
                   <span class="text-white font-bold text-sm">{{ username.charAt(0).toUpperCase() }}</span>
@@ -205,9 +206,9 @@ onMounted(() => {
                   <p class="text-xs text-neutral-500 dark:text-slate-400 truncate">{{ userEmail }}</p>
                 </div>
               </div>
-              <button @click="handleLogout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 hover:bg-red-50 transition-all duration-200 text-sm font-medium">
-                <div class="h-8 w-8 rounded-lg bg-red-50 flex items-center justify-center">
-                  <LogOut class="h-4 w-4 text-red-500" />
+              <button @click="handleLogout" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200 text-sm font-medium">
+                <div class="h-8 w-8 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
+                  <LogOut class="h-4 w-4 text-red-500 dark:text-red-400" />
                 </div>
                 Logout
               </button>
@@ -354,19 +355,31 @@ onMounted(() => {
               {{ scanDetail.result.summary }}
             </AlertDescription>
           </Alert>
-
           <Tabs v-model="activeTab" default-value="overview" class="w-full">
-            <TabsList class="grid w-full grid-cols-2 md:grid-cols-4">
-              <TabsTrigger value="overview" class="text-xs md:text-sm">Overview</TabsTrigger>
-              <TabsTrigger value="reconnaissance" class="text-xs md:text-sm">
-                Recon ({{ scanDetail.recon_data?.length || 0 }})
+            <TabsList class="grid w-full grid-cols-2 md:grid-cols-4 gap-1 p-1 h-auto bg-neutral-100/80 dark:bg-slate-800/80 rounded-xl border border-neutral-200/60 dark:border-slate-700/60">
+              <TabsTrigger value="overview" class="flex items-center justify-center gap-1.5 px-2 py-2.5 text-xs md:text-sm rounded-lg">
+                <BarChart3 class="h-3.5 w-3.5 shrink-0" />
+                <span>Overview</span>
               </TabsTrigger>
-              <TabsTrigger value="vulnerabilities" class="text-xs md:text-sm">
-                Vuln ({{ scanDetail.vulnerabilities?.length || 0 }})
+              <TabsTrigger value="reconnaissance" class="flex items-center justify-center gap-1.5 px-2 py-2.5 text-xs md:text-sm rounded-lg">
+                <Radar class="h-3.5 w-3.5 shrink-0" />
+                <span>Recon</span>
+                <span v-if="scanDetail.recon_data?.length" class="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 text-[10px] font-bold rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                  {{ scanDetail.recon_data.length }}
+                </span>
               </TabsTrigger>
-              <TabsTrigger value="recommendations" class="text-xs md:text-sm">Rekomendasi</TabsTrigger>
+              <TabsTrigger value="vulnerabilities" class="flex items-center justify-center gap-1.5 px-2 py-2.5 text-xs md:text-sm rounded-lg">
+                <ShieldAlert class="h-3.5 w-3.5 shrink-0" />
+                <span>Vuln</span>
+                <span v-if="scanDetail.vulnerabilities?.length" class="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 text-[10px] font-bold rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300">
+                  {{ scanDetail.vulnerabilities.length }}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="recommendations" class="flex items-center justify-center gap-1.5 px-2 py-2.5 text-xs md:text-sm rounded-lg">
+                <Lightbulb class="h-3.5 w-3.5 shrink-0" />
+                <span>Saran</span>
+              </TabsTrigger>
             </TabsList>
-
 
             <TabsContent value="overview" class="mt-4">
               <OverviewTab 

@@ -27,10 +27,10 @@ const highSeverityCount = computed(() => {
     <CardContent class="space-y-4">
       
       <div v-if="highSeverityCount > 0">
-        <Alert class="bg-red-50 border-red-200 mb-4">
+        <Alert class="bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30 mb-4">
           <AlertTriangle class="h-4 w-4 text-red-600" />
-          <AlertTitle class="text-red-900">Prioritas Tinggi</AlertTitle>
-          <AlertDescription class="text-red-800">
+          <AlertTitle class="text-red-900 dark:text-red-400">Prioritas Tinggi</AlertTitle>
+          <AlertDescription class="text-red-800 dark:text-red-300">
             Perbaiki {{ highSeverityCount }} kerentanan kritis segera untuk mencegah serangan berbahaya.
           </AlertDescription>
         </Alert>
@@ -40,21 +40,21 @@ const highSeverityCount = computed(() => {
         <div 
           v-for="(vuln, index) in vulnerabilities" 
           :key="index"
-          class="flex items-start gap-3 p-4 rounded-lg bg-neutral-50 border border-neutral-200"
+          class="flex items-start gap-3 p-4 rounded-lg bg-neutral-50 dark:bg-slate-800/50 border border-neutral-200 dark:border-slate-700"
         >
-          <div class="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0 text-sm font-medium text-blue-700">
+          <div class="h-6 w-6 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0 text-sm font-medium text-blue-700 dark:text-blue-400">
             {{ index + 1 }}
           </div>
           <div class="flex-1">
-            <h4 class="font-semibold text-neutral-900 mb-1">{{ vuln.name }}</h4>
-            <p class="text-sm text-neutral-700">{{ vuln.recommendation || 'Lihat dokumentasi untuk informasi lebih lanjut.' }}</p>
+            <h4 class="font-semibold text-neutral-900 dark:text-white mb-1">{{ vuln.name }}</h4>
+            <p class="text-sm text-neutral-700 dark:text-slate-300">{{ vuln.recommendation || 'Lihat dokumentasi untuk informasi lebih lanjut.' }}</p>
           </div>
         </div>
       </div>
 
       <div v-else class="text-center py-8">
         <CheckCircle2 class="h-12 w-12 mx-auto mb-3 text-green-500" />
-        <p class="text-sm text-neutral-600">Tidak ada rekomendasi perbaikan yang diperlukan.</p>
+        <p class="text-sm text-neutral-600 dark:text-slate-400">Tidak ada rekomendasi perbaikan yang diperlukan.</p>
       </div>
 
     </CardContent>

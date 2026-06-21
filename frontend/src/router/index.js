@@ -1,13 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { jwtDecode } from 'jwt-decode'
 
-import LandingView from '@/views/LandingView.vue'
-import LoginView from '@/views/LoginView.vue'
-import RegisterView from '@/views/RegisterView.vue'
-import DashboardView from '@/views/DashboardView.vue'
-import ScanView from '@/views/ScanView.vue'
-import HistoryView from '@/views/HistoryView.vue'
-import ScanDetailView from '@/views/ScanDetailView.vue'
+const LandingView = () => import('@/views/LandingView.vue')
+const LoginView = () => import('@/views/LoginView.vue')
+const RegisterView = () => import('@/views/RegisterView.vue')
+const DashboardView = () => import('@/views/DashboardView.vue')
+const ScanView = () => import('@/views/ScanView.vue')
+const HistoryView = () => import('@/views/HistoryView.vue')
+const ScanDetailView = () => import('@/views/ScanDetailView.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),

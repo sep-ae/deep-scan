@@ -76,10 +76,10 @@ const getSeverityColor  = (severity) => SEVERITY_CONFIG[normalizeSeverity(severi
   <Card v-if="!vulnerabilities || vulnerabilities.length === 0" class="border-none shadow-lg">
     <CardContent class="py-12 text-center">
       <CheckCircle2 class="h-16 w-16 mx-auto mb-4 text-green-500" />
-      <h3 class="font-semibold text-lg text-neutral-900 mb-2">
+      <h3 class="font-semibold text-lg text-neutral-900 dark:text-white mb-2">
         Tidak Ada Kerentanan Ditemukan
       </h3>
-      <p class="text-sm text-neutral-600">
+      <p class="text-sm text-neutral-600 dark:text-slate-400">
         Website Anda aman dari kerentanan yang umum ditemukan.
       </p>
     </CardContent>
@@ -102,12 +102,12 @@ const getSeverityColor  = (severity) => SEVERITY_CONFIG[normalizeSeverity(severi
             />
             <div class="flex-1 text-left">
               <div class="flex items-center gap-2 mb-2">
-                <h3 class="font-semibold text-base text-neutral-900">{{ vuln.name }}</h3>
+                <h3 class="font-semibold text-base text-neutral-900 dark:text-white">{{ vuln.name }}</h3>
                 <Badge variant="secondary" :class="getSeverityBadge(vuln.severity).class">
                   {{ getSeverityBadge(vuln.severity).text }}
                 </Badge>
               </div>
-              <p class="text-xs text-neutral-500">{{ vuln.category }}</p>
+              <p class="text-xs text-neutral-500 dark:text-slate-400">{{ vuln.category }}</p>
             </div>
           </div>
         </AccordionTrigger>
@@ -119,13 +119,13 @@ const getSeverityColor  = (severity) => SEVERITY_CONFIG[normalizeSeverity(severi
 
             <div
               v-if="vuln.parsed.vector || vuln.parsed.score || vuln.parsed.affected"
-              class="flex flex-wrap gap-3 p-3 bg-neutral-50 rounded-lg border border-neutral-200"
+              class="flex flex-wrap gap-3 p-3 bg-neutral-50 dark:bg-slate-800/50 rounded-lg border border-neutral-200 dark:border-slate-700"
             >
               <div v-if="vuln.parsed.affected" class="flex items-center gap-2">
-                <Shield class="h-4 w-4 text-neutral-600" />
+                <Shield class="h-4 w-4 text-neutral-600 dark:text-slate-400" />
                 <div>
-                  <span class="text-xs text-neutral-500">Affected Port/Service</span>
-                  <p class="text-sm font-semibold text-neutral-900">{{ vuln.parsed.affected }}</p>
+                  <span class="text-xs text-neutral-500 dark:text-slate-400">Affected Port/Service</span>
+                  <p class="text-sm font-semibold text-neutral-900 dark:text-white">{{ vuln.parsed.affected }}</p>
                 </div>
               </div>
 
@@ -137,8 +137,8 @@ const getSeverityColor  = (severity) => SEVERITY_CONFIG[normalizeSeverity(severi
 
               <div v-if="vuln.parsed.vector" class="flex items-center gap-2">
                 <div>
-                  <span class="text-xs text-neutral-500">CVSS Vector</span>
-                  <p class="text-xs font-mono text-neutral-900 bg-white px-2 py-1 rounded border border-neutral-200 mt-1">
+                  <span class="text-xs text-neutral-500 dark:text-slate-400">CVSS Vector</span>
+                  <p class="text-xs font-mono text-neutral-900 dark:text-slate-200 bg-white dark:bg-slate-900 px-2 py-1 rounded border border-neutral-200 dark:border-slate-700 mt-1">
                     {{ vuln.parsed.vector }}
                   </p>
                 </div>
@@ -152,7 +152,7 @@ const getSeverityColor  = (severity) => SEVERITY_CONFIG[normalizeSeverity(severi
 
               <div v-if="vuln.parsed.score" class="flex items-center gap-2">
                 <div>
-                  <span class="text-xs text-neutral-500">Risk Score</span>
+                  <span class="text-xs text-neutral-500 dark:text-slate-400">Risk Score</span>
                   <p class="text-sm font-bold" :class="{
                     'text-red-700':    parseFloat(vuln.parsed.score) >= 7,
                     'text-yellow-700': parseFloat(vuln.parsed.score) >= 4 && parseFloat(vuln.parsed.score) < 7,
@@ -165,34 +165,34 @@ const getSeverityColor  = (severity) => SEVERITY_CONFIG[normalizeSeverity(severi
             </div>
 
             <div>
-              <h4 class="font-semibold text-sm text-neutral-900 mb-2 flex items-center gap-2">
-                <Info class="h-4 w-4 text-neutral-600" />
+              <h4 class="font-semibold text-sm text-neutral-900 dark:text-white mb-2 flex items-center gap-2">
+                <Info class="h-4 w-4 text-neutral-600 dark:text-slate-400" />
                 Deskripsi
               </h4>
-              <p class="text-sm text-neutral-700 leading-relaxed">
+              <p class="text-sm text-neutral-700 dark:text-slate-300 leading-relaxed">
                 {{ vuln.parsed.cleanDescription || vuln.description }}
               </p>
             </div>
 
             <div v-if="vuln.recommendation">
-              <h4 class="font-semibold text-sm text-neutral-900 mb-2 flex items-center gap-2">
+              <h4 class="font-semibold text-sm text-neutral-900 dark:text-white mb-2 flex items-center gap-2">
                 <CheckCircle2 class="h-4 w-4 text-green-600" />
                 Rekomendasi Perbaikan
               </h4>
-              <div class="text-sm text-neutral-700 leading-relaxed bg-green-50 p-3 rounded-lg border border-green-200">
+              <div class="text-sm text-neutral-700 dark:text-slate-300 leading-relaxed bg-green-50 dark:bg-green-900/10 p-3 rounded-lg border border-green-200 dark:border-green-900/30">
                 {{ vuln.recommendation }}
               </div>
             </div>
 
             <!-- PoC (Proof of Concept) Section -->
             <div v-if="vuln.poc">
-              <h4 class="font-semibold text-sm text-neutral-900 mb-2 flex items-center gap-2">
+              <h4 class="font-semibold text-sm text-neutral-900 dark:text-white mb-2 flex items-center gap-2">
                 <AlertTriangle class="h-4 w-4 text-orange-600" />
                 Proof of Concept (PoC)
               </h4>
-              <div class="bg-orange-50 rounded-lg border border-orange-200 p-4 space-y-3">
+              <div class="bg-orange-50 dark:bg-orange-900/10 rounded-lg border border-orange-200 dark:border-orange-900/30 p-4 space-y-3">
                 <div class="flex items-center gap-2">
-                  <span class="text-xs font-semibold text-orange-700 uppercase tracking-wide">HTTP Method</span>
+                  <span class="text-xs font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">HTTP Method</span>
                   <span class="px-2 py-0.5 text-xs font-bold rounded"
                     :class="{
                       'bg-blue-100 text-blue-800': vuln.poc.http_method === 'GET',
@@ -204,12 +204,12 @@ const getSeverityColor  = (severity) => SEVERITY_CONFIG[normalizeSeverity(severi
                 </div>
 
                 <div>
-                  <span class="text-xs font-semibold text-orange-700 uppercase tracking-wide">Payload</span>
+                  <span class="text-xs font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">Payload</span>
                   <pre class="mt-1 text-xs font-mono bg-neutral-900 text-green-400 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">{{ vuln.poc.payload }}</pre>
                 </div>
 
                 <div>
-                  <span class="text-xs font-semibold text-orange-700 uppercase tracking-wide">Response</span>
+                  <span class="text-xs font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">Response</span>
                   <pre class="mt-1 text-xs font-mono bg-neutral-900 text-orange-300 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">{{ vuln.poc.response }}</pre>
                 </div>
               </div>

@@ -32,7 +32,7 @@ const severityLevels = computed(() => [
     key: 'high',
     label: 'High Severity',
     count: vulnerabilitiesBySeverity.value.high.length,
-    textClass: 'text-red-700',
+    textClass: 'text-red-700 dark:text-red-400',
     barClass: 'bg-red-500',
     icon: AlertTriangle
   },
@@ -40,7 +40,7 @@ const severityLevels = computed(() => [
     key: 'medium',
     label: 'Medium Severity',
     count: vulnerabilitiesBySeverity.value.medium.length,
-    textClass: 'text-yellow-700',
+    textClass: 'text-yellow-700 dark:text-yellow-400',
     barClass: 'bg-yellow-500',
     icon: AlertCircle
   },
@@ -48,7 +48,7 @@ const severityLevels = computed(() => [
     key: 'low',
     label: 'Low Severity',
     count: vulnerabilitiesBySeverity.value.low.length,
-    textClass: 'text-blue-700',
+    textClass: 'text-blue-700 dark:text-blue-400',
     barClass: 'bg-blue-500',
     icon: Info
   }
@@ -79,7 +79,7 @@ const severityLevels = computed(() => [
             {{ level.count }}
           </span>
         </div>
-        <div class="h-2 bg-neutral-100 rounded-full overflow-hidden">
+        <div class="h-2 bg-neutral-100 dark:bg-slate-800 rounded-full overflow-hidden">
           <div
             class="h-full transition-all"
             :class="level.barClass"

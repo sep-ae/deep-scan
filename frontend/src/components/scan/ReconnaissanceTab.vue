@@ -175,8 +175,8 @@ const renderCORS = (data) => {
   <Card v-if="!reconData || reconData.length === 0" class="border-none shadow-lg">
     <CardContent class="py-12 text-center">
       <Search class="h-16 w-16 mx-auto mb-4 text-neutral-300" />
-      <h3 class="font-semibold text-lg text-neutral-900 mb-2">Tidak Ada Data Reconnaissance</h3>
-      <p class="text-sm text-neutral-600">Belum ada informasi yang dikumpulkan saat fase reconnaissance.</p>
+              <h3 class="font-semibold text-lg text-neutral-900 dark:text-white mb-2">Tidak Ada Data Reconnaissance</h3>
+      <p class="text-sm text-neutral-600 dark:text-slate-300">Belum ada informasi yang dikumpulkan saat fase reconnaissance.</p>
     </CardContent>
   </Card>
 
@@ -188,7 +188,7 @@ const renderCORS = (data) => {
     >
       <CardHeader>
         <CardTitle class="flex items-center gap-2 text-lg">
-          <component :is="getCategoryIcon(category)" class="h-5 w-5 text-neutral-700" />
+          <component :is="getCategoryIcon(category)" class="h-5 w-5 text-neutral-700 dark:text-slate-300" />
           {{ category }}
         </CardTitle>
         <CardDescription>{{ items.length }} item(s) ditemukan</CardDescription>
@@ -201,20 +201,20 @@ const renderCORS = (data) => {
           <div
             v-for="item in getDNSRecords(items)"
             :key="item.recon_id"
-            class="p-3 rounded-lg border border-neutral-200 bg-white"
+            class="p-3 rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900"
           >
-            <div class="font-semibold text-sm text-neutral-900 mb-1">{{ item.item }}</div>
+              <div class="font-semibold text-sm text-neutral-900 dark:text-white mb-1">{{ item.item }}</div>
             <template v-if="formatDNSValue(item)">
               <template v-if="Array.isArray(formatDNSValue(item))">
                 <div
                   v-for="(val, idx) in formatDNSValue(item)"
                   :key="idx"
-                  class="text-sm text-neutral-600"
+                  class="text-sm text-neutral-600 dark:text-slate-300"
                 >
                   {{ val }}
                 </div>
               </template>
-              <div v-else class="text-sm text-neutral-600">
+              <div v-else class="text-sm text-neutral-600 dark:text-slate-300">
                 {{ formatDNSValue(item) }}
               </div>
             </template>
@@ -222,13 +222,13 @@ const renderCORS = (data) => {
 
           <div
             v-if="getDNSMetadata(items)"
-            class="p-3 rounded-lg border border-neutral-100 bg-neutral-50"
+            class="p-3 rounded-lg border border-neutral-100 dark:border-slate-800/50 bg-neutral-50 dark:bg-slate-800/50"
           >
             <div class="font-semibold text-xs text-neutral-400 uppercase tracking-wide mb-2">Scan Metadata</div>
             <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
               <template v-for="(val, key) in getDNSMetadata(items)" :key="key">
-                <span class="font-medium text-neutral-600">{{ key }}</span>
-                <span class="text-neutral-800">{{ val }}</span>
+                <span class="font-medium text-neutral-600 dark:text-slate-400">{{ key }}</span>
+                <span class="text-neutral-800 dark:text-slate-200">{{ val }}</span>
               </template>
             </div>
           </div>
@@ -239,12 +239,12 @@ const renderCORS = (data) => {
           <div
             v-for="item in items"
             :key="item.recon_id"
-            class="p-3 rounded-lg border border-neutral-200 bg-white"
+            class="p-3 rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900"
           >
             <div class="flex items-start justify-between gap-3">
               <div class="flex-1">
-                <div class="font-semibold text-sm text-neutral-900 mb-1">Port {{ item.item }}</div>
-                <div v-if="item.parsedDetails && typeof item.parsedDetails === 'object'" class="space-y-1 text-xs text-neutral-600">
+                  <div class="font-semibold text-sm text-neutral-900 dark:text-white mb-1">Port {{ item.item }}</div>
+                <div v-if="item.parsedDetails && typeof item.parsedDetails === 'object'" class="space-y-1 text-xs text-neutral-600 dark:text-slate-400">
                   <div>Service: {{ item.parsedDetails.service }}</div>
                   <div v-if="item.parsedDetails.banner">Banner: {{ item.parsedDetails.banner }}</div>
                 </div>
@@ -259,9 +259,9 @@ const renderCORS = (data) => {
           <div
             v-for="item in items"
             :key="item.recon_id"
-            class="p-3 rounded-lg border border-neutral-200 bg-white"
+            class="p-3 rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900"
           >
-            <div class="font-semibold text-sm text-neutral-900 capitalize mb-2">
+            <div class="font-semibold text-sm text-neutral-900 dark:text-white capitalize mb-2">
               {{ item.item.replace(/_/g, ' ') }}
             </div>
             <div class="flex flex-wrap gap-2">
@@ -282,40 +282,40 @@ const renderCORS = (data) => {
           <div
             v-for="(subItems, subCategory) in subdomainsByCategory"
             :key="subCategory"
-            class="border border-neutral-200 rounded-lg overflow-hidden bg-white"
+            class="border border-neutral-200 dark:border-slate-800 rounded-lg overflow-hidden bg-white dark:bg-slate-900"
           >
             <div
-              class="flex items-center justify-between p-3 bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors"
+              class="flex items-center justify-between p-3 bg-neutral-50 dark:bg-slate-800/50 cursor-pointer hover:bg-neutral-100 dark:hover:bg-slate-800 transition-colors"
               @click="toggleCategory(subCategory)"
             >
               <div class="flex items-center gap-3">
-                <Server class="h-4 w-4 text-neutral-700" />
+                <Server class="h-4 w-4 text-neutral-700 dark:text-slate-300" />
                 <div>
-                  <h4 class="font-semibold text-sm text-neutral-900">{{ subCategory }}</h4>
-                  <p class="text-xs text-neutral-600">{{ subItems.length }} subdomain(s)</p>
+                  <h4 class="font-semibold text-sm text-neutral-900 dark:text-white">{{ subCategory }}</h4>
+                  <p class="text-xs text-neutral-600 dark:text-slate-400">{{ subItems.length }} subdomain(s)</p>
                 </div>
               </div>
-              <component :is="expandedCategories[subCategory] ? ChevronUp : ChevronDown" class="h-4 w-4 text-neutral-600" />
+              <component :is="expandedCategories[subCategory] ? ChevronUp : ChevronDown" class="h-4 w-4 text-neutral-600 dark:text-slate-400" />
             </div>
 
             <div v-if="expandedCategories[subCategory]" class="max-h-96 overflow-y-auto">
               <div
                 v-for="(item, idx) in subItems"
                 :key="item.recon_id"
-                :class="['grid grid-cols-3 gap-4 p-3 border-b border-neutral-100', idx % 2 === 0 ? 'bg-neutral-50' : 'bg-white']"
+                :class="['grid grid-cols-3 gap-4 p-3 border-b border-neutral-100 dark:border-slate-800/50', idx % 2 === 0 ? 'bg-neutral-50 dark:bg-slate-800/50' : 'bg-white dark:bg-slate-900']"
               >
-                <div class="text-sm font-medium text-neutral-900 truncate">
+                <div class="text-sm font-medium text-neutral-900 dark:text-white truncate">
                   {{ item.parsedDetails?.subdomain || item.item }}
                 </div>
-                <div class="text-xs text-neutral-600">
+                <div class="text-xs text-neutral-600 dark:text-slate-400">
                   <template v-if="item.parsedDetails?.all_ips">
                     <div v-for="(ip, ipIdx) in item.parsedDetails.all_ips.slice(0, 2)" :key="ipIdx">{{ ip }}</div>
-                    <div v-if="item.parsedDetails.all_ips.length > 2" class="text-neutral-400">
+                    <div v-if="item.parsedDetails.all_ips.length > 2" class="text-neutral-400 dark:text-slate-500">
                       +{{ item.parsedDetails.all_ips.length - 2 }} more
                     </div>
                   </template>
                   <template v-else-if="item.parsedDetails?.ip">{{ item.parsedDetails.ip }}</template>
-                  <template v-else><span class="text-neutral-400">N/A</span></template>
+                  <template v-else><span class="text-neutral-400 dark:text-slate-500">N/A</span></template>
                 </div>
                 <div class="flex items-center justify-end">
                   <Badge variant="outline" class="text-xs">{{ item.parsedDetails?.category || 'Unknown' }}</Badge>
@@ -323,8 +323,8 @@ const renderCORS = (data) => {
               </div>
             </div>
 
-            <div v-if="!expandedCategories[subCategory]" class="p-2 bg-neutral-50 text-center">
-              <Button variant="ghost" size="sm" @click="toggleCategory(subCategory)" class="text-sm text-neutral-700">
+            <div v-if="!expandedCategories[subCategory]" class="p-2 bg-neutral-50 dark:bg-slate-800/50 text-center">
+              <Button variant="ghost" size="sm" @click="toggleCategory(subCategory)" class="text-sm text-neutral-700 dark:text-slate-300">
                 Show {{ subItems.length }} subdomains
                 <ChevronDown class="h-4 w-4 ml-1" />
               </Button>
@@ -337,10 +337,10 @@ const renderCORS = (data) => {
           <div
             v-for="item in items"
             :key="item.recon_id"
-            class="p-3 rounded-lg border border-neutral-200 bg-white"
+            class="p-3 rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900"
           >
             <div class="flex items-center justify-between mb-1">
-              <div class="font-semibold text-sm text-neutral-900">{{ item.item }}</div>
+              <div class="font-semibold text-sm text-neutral-900 dark:text-white">{{ item.item }}</div>
               <Badge
                 :class="renderHeaderItem(item.parsedDetails).present
                   ? 'bg-green-100 text-green-700 border-green-200'
@@ -351,8 +351,8 @@ const renderCORS = (data) => {
                 {{ renderHeaderItem(item.parsedDetails).present ? '✓ Present' : '✗ Missing' }}
               </Badge>
             </div>
-            <div class="text-xs text-neutral-500">{{ renderHeaderItem(item.parsedDetails).description }}</div>
-            <div v-if="renderHeaderItem(item.parsedDetails).value" class="text-xs font-mono bg-neutral-50 rounded px-2 py-1 mt-1 text-neutral-700 break-all">
+            <div class="text-xs text-neutral-500 dark:text-slate-400">{{ renderHeaderItem(item.parsedDetails).description }}</div>
+            <div v-if="renderHeaderItem(item.parsedDetails).value" class="text-xs font-mono bg-neutral-50 dark:bg-slate-800 rounded px-2 py-1 mt-1 text-neutral-700 dark:text-slate-300 break-all">
               {{ renderHeaderItem(item.parsedDetails).value }}
             </div>
           </div>
@@ -363,10 +363,10 @@ const renderCORS = (data) => {
           <div
             v-for="item in items"
             :key="item.recon_id"
-            class="p-3 rounded-lg border border-neutral-200 bg-white"
+            class="p-3 rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900"
           >
-            <div class="font-semibold text-sm text-neutral-900 mb-2">{{ item.item }}</div>
-            <div class="text-xs font-mono bg-neutral-50 rounded p-2 text-neutral-700 break-all">
+              <div class="font-semibold text-sm text-neutral-900 dark:text-white mb-2">{{ item.item }}</div>
+            <div class="text-xs font-mono bg-neutral-50 dark:bg-slate-800 rounded p-2 text-neutral-700 dark:text-slate-300 break-all">
               {{ renderCORS(item.parsedDetails) }}
             </div>
             <div
@@ -383,13 +383,13 @@ const renderCORS = (data) => {
           <div
             v-for="item in items"
             :key="item.recon_id"
-            class="p-3 rounded-lg border border-neutral-200 bg-white"
+            class="p-3 rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900"
           >
             <div class="flex items-center gap-2 mb-1">
-              <Shield class="h-4 w-4 text-neutral-600" />
-              <div class="font-semibold text-sm text-neutral-900">{{ item.item }}</div>
+              <Shield class="h-4 w-4 text-neutral-600 dark:text-slate-400" />
+              <div class="font-semibold text-sm text-neutral-900 dark:text-white">{{ item.item }}</div>
             </div>
-            <div class="text-sm text-neutral-600">{{ item.details }}</div>
+            <div class="text-sm text-neutral-600 dark:text-slate-300">{{ item.details }}</div>
           </div>
         </div>
 
@@ -398,10 +398,10 @@ const renderCORS = (data) => {
           <div
             v-for="item in items"
             :key="item.recon_id"
-            class="p-3 rounded-lg border border-neutral-200 bg-white"
+            class="p-3 rounded-lg border border-neutral-200 dark:border-slate-800 bg-white dark:bg-slate-900"
           >
-            <div class="font-semibold text-sm text-neutral-900 mb-1">{{ item.item }}</div>
-            <div class="text-sm text-neutral-600">{{ item.details }}</div>
+              <div class="font-semibold text-sm text-neutral-900 dark:text-white mb-1">{{ item.item }}</div>
+            <div class="text-sm text-neutral-600 dark:text-slate-300">{{ item.details }}</div>
           </div>
         </div>
 
