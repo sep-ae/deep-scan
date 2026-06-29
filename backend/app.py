@@ -1,6 +1,6 @@
 # app.py
 from flask import Flask, jsonify
-from config import Config
+from config import Config, IS_DEV
 from extensions import db, jwt, limiter
 from flask_cors import CORS
 from flasgger import Swagger
@@ -37,7 +37,8 @@ def create_app():
         }
     })
 
-    swagger = Swagger(app)
+    if IS_DEV:
+        swagger = Swagger(app)
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(scan_bp)
@@ -52,13 +53,16 @@ def create_app():
         response.headers['X-XSS-Protection'] = '1; mode=block'
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-        if not app.debug:
+        if not IS_DEV:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         return response
 
     @app.route('/')
     def index():
-        return jsonify({"status": "Scanner API Online", "docs": "/apidocs"})
+        res = {"status": "Scanner API Online"}
+        if IS_DEV:
+            res["docs"] = "/apidocs"
+        return jsonify(res)
 
     with app.app_context():
         db.create_all()
