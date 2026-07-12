@@ -69,7 +69,9 @@ def _get(obj, key, default='—'):
 
 
 def _safe(val, limit=0):
+    from xml.sax.saxutils import escape
     s = str(val) if val is not None else '—'
+    s = escape(s)
     return s[:limit] if limit else s
 
 
